@@ -188,6 +188,27 @@
 #
 # Basic Python, familiarity with HTTP APIs and sandboxing, and an HF token with access to Inference Providers.
 #
+# ── 下面各段是逐块讲解的摘录，配置和工具函数的完整版在文末"完整扩展示例"里；
+#    这里先补齐几个摘录里直接引用、但要到文末才定义的名字，避免未定义 ──
+import os
+import re
+from pathlib import Path
+from openai import OpenAI
+
+MAX_STEPS = 50  # 最多跑 50 步
+
+client = OpenAI(
+    base_url="https://router.huggingface.co/v1",
+    api_key=os.getenv("HF_TOKEN", ""),
+)
+
+
+def extract_python(text):
+    """从模型回复里抠出 ```python ... ``` 代码块；没有围栏就整段当代码"""
+    match = re.search(r"```python\n(.*?)\n```", text, re.DOTALL)
+    return match.group(1) if match else text
+
+
 def list_dir(path="."):
     """List directory contents."""
     p = safe_path(path)  # Ensure path is in workspace
@@ -429,6 +450,10 @@ safe_path("data/models.txt")
 # → IS relative to WORKSPACE
 # → Returns path ✓
 
+# 示例：模型生成的一段代码 + 当前消息历史（真实值来自上面 main() 的循环）
+agent_code = 'final_answer(list_dir("."))'
+messages = []
+
 # Only these functions are available
 exec_globals = {
     "__builtins__": {}, # need to explicitly remove builtins
@@ -493,10 +518,12 @@ def bad_tool_1(path):
     return open(path).read()  # Reads anything!
 
 # ✗ BAD: No output limit
+database = None  # 占位：示意"直接把整个数据库查询结果丢回去"的坏工具
 def bad_tool_2(query):
     return database.query(query)  # Could be terabytes
 
 # ✗ BAD: No error handling
+import requests
 def bad_tool_3(url):
     return requests.get(url).text  # Can timeout, hang
 

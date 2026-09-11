@@ -115,6 +115,31 @@ def plot_cube(ax, cube, label, color="black"):
     ax.set_ylim([-2, 2])
     ax.set_zlim([-2, 2])
 
+# 单位立方体的 8 个顶点，齐次坐标 (4 x 8)，按 OpenGL 约定用 M @ x 做变换
+cube = np.array(
+    [
+        [-0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5],  # x
+        [-0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5],  # y
+        [-0.5, -0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5],  # z
+        [1, 1, 1, 1, 1, 1, 1, 1],  # w
+    ]
+)
+
+#平移
+# 建图
+fig = plt.figure()
+ax = fig.add_subplot(111, projection="3d")
+
+# 画原始立方体
+plot_cube(ax, cube, label="Original", color="blue")
+
+# 平移矩阵（x 方向移 1，y 方向移 0.5）：平移量放在最后一列，这就是为什么要用齐次坐标
+translation_matrix = np.array([[1, 0, 0, 1], [0, 1, 0, 0.5], [0, 0, 1, 0], [0, 0, 0, 1]])
+
+translated_cube = translation_matrix @ cube
+
+plot_cube(ax, translated_cube, label="Translated", color="red")
+
 #规模化
 # set up figure
 fig = plt.figure()
@@ -390,6 +415,28 @@ def eval_depth(pred, target):
         "mae": mae.detach(),
         "silog": silog.detach(),
     }
+
+
+# ── notebook 里的配置 cell（课程摘录漏掉了，这里补上，否则 train_fn 里这些名字全部未定义）──
+seed = 42
+mixed_precision = "fp16"
+model_encoder = "vits"  # 用最小的 ViT-S 编码器
+model_configs = {
+    "vits": {"encoder": "vits", "features": 64, "out_channels": [48, 96, 192, 384]},
+    "vitb": {"encoder": "vitb", "features": 128, "out_channels": [96, 192, 384, 768]},
+    "vitl": {"encoder": "vitl", "features": 256, "out_channels": [256, 512, 1024, 1024]},
+}
+model_weights_path = "/kaggle/working/depth_anything_v2_vits.pth"  # 作者放出的预训练权重
+max_depth = 20  # NYU 室内深度上限（米）
+lr = 5e-6  # 编码器学习率；解码器用 10 倍
+weight_decay = 0.01
+batch_size = 8
+warmup_epochs = 1
+num_epochs = 10
+scheduler_rate = 1
+load_state = False  # 是否从 state_path 断点续训
+state_path = "/kaggle/working/state"
+save_model_path = "/kaggle/working/best_model.pth"
 
 
 def train_fn():

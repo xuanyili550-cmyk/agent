@@ -41,6 +41,126 @@
 # 特征的维度和特征图的分辨率随图层而变化。
 # 分类头：与 ViT 类似，它使用多层感知器 (MLP) 头进行分类任务，如定义中所述self.head，作为最后一步。
 
+import torch
+import torch.nn as nn
+import torch.utils.checkpoint as checkpoint
+from timm.layers import DropPath, to_2tuple, trunc_normal_
+
+# fused_window_process 用的 CUDA 核（官方仓库 kernels/window_process），没装就退化为 None
+try:
+    from kernels.window_process.window_process import WindowProcess, WindowProcessReverse
+except ImportError:
+    WindowProcess = None
+    WindowProcessReverse = None
+
+
+# ── 以下 Mlp / window_partition / window_reverse / PatchEmbed / BasicLayer 来自官方 Swin 实现
+#    (microsoft/Swin-Transformer models/swin_transformer.py)，课程摘录省略了它们，这里补全让文件可解析 ──
+class Mlp(nn.Module):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.0):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.act = act_layer()
+        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.drop = nn.Dropout(drop)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.drop(x)
+        x = self.fc2(x)
+        x = self.drop(x)
+        return x
+
+
+def window_partition(x, window_size):
+    """把特征图切成不重叠的窗口：(B, H, W, C) -> (num_windows*B, window_size, window_size, C)"""
+    B, H, W, C = x.shape
+    x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
+    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    return windows
+
+
+def window_reverse(windows, window_size, H, W):
+    """window_partition 的逆操作，把窗口拼回特征图：(num_windows*B, window_size, window_size, C) -> (B, H, W, C)"""
+    B = int(windows.shape[0] / (H * W / window_size / window_size))
+    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
+    x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
+    return x
+
+
+class PatchEmbed(nn.Module):
+    """图像 → patch 嵌入：一个 kernel=stride=patch_size 的卷积就完成了"切块 + 线性投影"，输出 (B, 块数, embed_dim)"""
+
+    def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
+        super().__init__()
+        img_size = to_2tuple(img_size)
+        patch_size = to_2tuple(patch_size)
+        patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.patches_resolution = patches_resolution
+        self.num_patches = patches_resolution[0] * patches_resolution[1]
+
+        self.in_chans = in_chans
+        self.embed_dim = embed_dim
+
+        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.norm = norm_layer(embed_dim) if norm_layer is not None else None
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        assert H == self.img_size[0] and W == self.img_size[1], \
+            f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+        x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
+        if self.norm is not None:
+            x = self.norm(x)
+        return x
+
+
+class BasicLayer(nn.Module):
+    """Swin 的一个 stage：若干个 SwinTransformerBlock（偶数块不移窗、奇数块移窗交替）+ 可选的 PatchMerging 下采样"""
+
+    def __init__(self, dim, input_resolution, depth, num_heads, window_size,
+                 mlp_ratio=4.0, qkv_bias=True, qk_scale=None, drop=0.0, attn_drop=0.0,
+                 drop_path=0.0, norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
+                 fused_window_process=False):
+        super().__init__()
+        self.dim = dim
+        self.input_resolution = input_resolution
+        self.depth = depth
+        self.use_checkpoint = use_checkpoint
+
+        # 堆叠 block：偶数块 shift_size=0（W-MSA），奇数块 shift_size=window_size//2（SW-MSA），这就是"移动窗口"
+        self.blocks = nn.ModuleList([
+            SwinTransformerBlock(
+                dim=dim, input_resolution=input_resolution, num_heads=num_heads,
+                window_size=window_size, shift_size=0 if (i % 2 == 0) else window_size // 2,
+                mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop, attn_drop=attn_drop,
+                drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                norm_layer=norm_layer, fused_window_process=fused_window_process)
+            for i in range(depth)])
+
+        # stage 末尾的 PatchMerging 下采样（分辨率减半、通道翻倍；最后一个 stage 没有）
+        if downsample is not None:
+            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+        else:
+            self.downsample = None
+
+    def forward(self, x):
+        for blk in self.blocks:
+            if self.use_checkpoint:
+                x = checkpoint.checkpoint(blk, x)
+            else:
+                x = blk(x)
+        if self.downsample is not None:
+            x = self.downsample(x)
+        return x
+
+
 class SwinTransformer(nn.Module):
     def __init__(
         self,
@@ -624,6 +744,101 @@ def _build_projection(self, dim_in, dim_out, kernel_size, padding, stride, metho
 
     return proj
 
+
+# ── 以下 Attention / Block 来自官方 CvT 实现 (microsoft/CvT lib/models/cls_cvt.py)，
+#    课程摘录只给了 _build_projection，这里补全让下面 VisionTransformer 里的 Block 可解析 ──
+class Attention(nn.Module):
+    def __init__(self, dim_in, dim_out, num_heads, qkv_bias=False, attn_drop=0.0, proj_drop=0.0,
+                 method="dw_bn", kernel_size=3, stride_kv=1, stride_q=1, padding_kv=1, padding_q=1,
+                 with_cls_token=True, **kwargs):
+        super().__init__()
+        self.stride_kv = stride_kv
+        self.stride_q = stride_q
+        self.dim = dim_out
+        self.num_heads = num_heads
+        self.scale = dim_out ** -0.5
+        self.with_cls_token = with_cls_token
+
+        # 上面模块级的 _build_projection 就是这个类的方法（课程单独摘出来讲），直接复用
+        self.conv_proj_q = _build_projection(self, dim_in, dim_out, kernel_size, padding_q, stride_q,
+                                             "linear" if method == "avg" else method)
+        self.conv_proj_k = _build_projection(self, dim_in, dim_out, kernel_size, padding_kv, stride_kv, method)
+        self.conv_proj_v = _build_projection(self, dim_in, dim_out, kernel_size, padding_kv, stride_kv, method)
+
+        self.proj_q = nn.Linear(dim_in, dim_out, bias=qkv_bias)
+        self.proj_k = nn.Linear(dim_in, dim_out, bias=qkv_bias)
+        self.proj_v = nn.Linear(dim_in, dim_out, bias=qkv_bias)
+
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim_out, dim_out)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward_conv(self, x, h, w):
+        if self.with_cls_token:
+            cls_token, x = torch.split(x, [1, h * w], 1)
+
+        x = rearrange(x, "b (h w) c -> b c h w", h=h, w=w)
+
+        q = self.conv_proj_q(x) if self.conv_proj_q is not None else rearrange(x, "b c h w -> b (h w) c")
+        k = self.conv_proj_k(x) if self.conv_proj_k is not None else rearrange(x, "b c h w -> b (h w) c")
+        v = self.conv_proj_v(x) if self.conv_proj_v is not None else rearrange(x, "b c h w -> b (h w) c")
+
+        if self.with_cls_token:
+            q = torch.cat((cls_token, q), dim=1)
+            k = torch.cat((cls_token, k), dim=1)
+            v = torch.cat((cls_token, v), dim=1)
+
+        return q, k, v
+
+    def forward(self, x, h, w):
+        if self.conv_proj_q is not None or self.conv_proj_k is not None or self.conv_proj_v is not None:
+            q, k, v = self.forward_conv(x, h, w)
+        else:
+            q = k = v = x
+
+        q = rearrange(self.proj_q(q), "b t (h d) -> b h t d", h=self.num_heads)
+        k = rearrange(self.proj_k(k), "b t (h d) -> b h t d", h=self.num_heads)
+        v = rearrange(self.proj_v(v), "b t (h d) -> b h t d", h=self.num_heads)
+
+        attn_score = torch.einsum("bhlk,bhtk->bhlt", [q, k]) * self.scale
+        attn = F.softmax(attn_score, dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = torch.einsum("bhlt,bhtv->bhlv", [attn, v])
+        x = rearrange(x, "b h t d -> b t (h d)")
+
+        x = self.proj(x)
+        x = self.proj_drop(x)
+
+        return x
+
+
+class Block(nn.Module):
+    def __init__(self, dim_in, dim_out, num_heads, mlp_ratio=4.0, qkv_bias=False, drop=0.0,
+                 attn_drop=0.0, drop_path=0.0, act_layer=nn.GELU, norm_layer=nn.LayerNorm, **kwargs):
+        super().__init__()
+        self.with_cls_token = kwargs["with_cls_token"]
+
+        self.norm1 = norm_layer(dim_in)
+        self.attn = Attention(dim_in, dim_out, num_heads, qkv_bias, attn_drop, drop, **kwargs)
+
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.norm2 = norm_layer(dim_out)
+
+        dim_mlp_hidden = int(dim_out * mlp_ratio)
+        self.mlp = Mlp(in_features=dim_out, hidden_features=dim_mlp_hidden, act_layer=act_layer, drop=drop)
+
+    def forward(self, x, h, w):
+        res = x
+
+        x = self.norm1(x)
+        attn = self.attn(x, h, w)
+        x = res + self.drop_path(attn)
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
+
+        return x
+
+
 class ConvEmbed(nn.Module):
     def __init__(
         self, patch_size=7, in_chans=3, embed_dim=64, stride=4, padding=2, norm_layer=None
@@ -890,9 +1105,11 @@ predicted_label = logits.argmax(-1).item()
 print(model.config.id2label[predicted_label])
 
 
+import os
 import json
 import requests
 
+API_TOKEN = os.environ.get("HF_TOKEN", "")  # 推理 API 的 token，从环境变量读
 headers = {"Authorization": f"Bearer {API_TOKEN}"}
 API_URL = (
     "https://api-inference.huggingface.co/models/apple/mobilevitv2-1.0-imagenet1k-256"
@@ -1308,35 +1525,36 @@ class DETR(nn.Module):
         )
         return self.linear_class(h), self.linear_bbox(h).sigmoid()
 
-x = self.backbone(inputs)
-h = self.conv(x)
-self.backbone = nn.Sequential(*list(resnet50(pretrained=True).children())[:-2])
-self.conv = nn.Conv2d(2048, hidden_dim, 1)
-
-pos = (
-    torch.cat(
-        [
-            self.col_embed[:W].unsqueeze(0).repeat(H, 1, 1),
-            self.row_embed[:H].unsqueeze(1).repeat(1, W, 1),
-        ],
-        dim=-1,
-    )
-    .flatten(0, 1)
-    .unsqueeze(1)
-)
-
-self.row_embed = nn.Parameter(torch.rand(50, hidden_dim // 2))
-self.col_embed = nn.Parameter(torch.rand(50, hidden_dim // 2))
-
-h.flatten(2).permute(2, 0, 1)
-
-h = self.transformer(pos + h.flatten(2).permute(2, 0, 1), self.query_pos.unsqueeze(1))
-
-return self.linear_class(h), self.linear_bbox(h).sigmoid()
-
-self.linear_class = nn.Linear(hidden_dim, num_classes + 1)
-
-self.linear_bbox = nn.Linear(hidden_dim, 4)
+# ── 上面 DETR.forward 的分步拆解（课程按行讲解的片段，取自类体内部，单独放在模块级不能运行，故保留为注释）──
+# 1) backbone 抽特征，再 1x1 卷积把 2048 通道压到 hidden_dim
+# x = self.backbone(inputs)
+# h = self.conv(x)
+# self.backbone = nn.Sequential(*list(resnet50(pretrained=True).children())[:-2])
+# self.conv = nn.Conv2d(2048, hidden_dim, 1)
+#
+# 2) 行/列可学习位置编码拼成 (H*W, 1, hidden_dim)
+# pos = (
+#     torch.cat(
+#         [
+#             self.col_embed[:W].unsqueeze(0).repeat(H, 1, 1),
+#             self.row_embed[:H].unsqueeze(1).repeat(1, W, 1),
+#         ],
+#         dim=-1,
+#     )
+#     .flatten(0, 1)
+#     .unsqueeze(1)
+# )
+# self.row_embed = nn.Parameter(torch.rand(50, hidden_dim // 2))
+# self.col_embed = nn.Parameter(torch.rand(50, hidden_dim // 2))
+#
+# 3) 特征图展平成序列 (H*W, B, hidden_dim)，加位置编码送进 Transformer，query_pos 是 100 个 object query
+# h.flatten(2).permute(2, 0, 1)
+# h = self.transformer(pos + h.flatten(2).permute(2, 0, 1), self.query_pos.unsqueeze(1))
+#
+# 4) 两个线性头：类别 (num_classes + 1，多一个"无物体") 和 bbox (4 维, sigmoid 归一化)
+# return self.linear_class(h), self.linear_bbox(h).sigmoid()
+# self.linear_class = nn.Linear(hidden_dim, num_classes + 1)
+# self.linear_bbox = nn.Linear(hidden_dim, 4)
 
 #基于Transformer的图像分割
 

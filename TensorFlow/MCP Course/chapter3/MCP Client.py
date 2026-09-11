@@ -171,7 +171,9 @@ def extract_tags_from_text(text: str) -> List[str]:
     return valid_tags
 
 #后台任务处理
-from fastapi import BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks
+
+app = FastAPI(title="HF Tagging Bot")  # 片段示例先建一个 app；完整应用见下方"FastAPI Webhook 应用程序"
 
 
 @app.post("/webhook")

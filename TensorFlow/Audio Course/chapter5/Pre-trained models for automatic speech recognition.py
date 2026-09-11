@@ -20,7 +20,6 @@
 
 #探测CTC模型
 from datasets import load_dataset
-from studio.backend.utils.datasets import DataCollatorSpeechSeq2SeqWithPadding
 
 dataset = load_dataset(
     "hf-internal-testing/librispeech_asr_dummy", "clean", split="validation"
@@ -169,6 +168,10 @@ pipe(
 from evaluate import load
 
 wer_metric = load("wer")
+
+# 课程里的示例句：1 个替换 + 1 个删除
+reference = "the cat sat on the mat"
+prediction = "the cat sit on the"
 
 wer = wer_metric.compute(references=[reference], predictions=[prediction])
 
@@ -453,7 +456,8 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 
         return batch
 
-    data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
+
+data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=processor)
 #评估指标
 import evaluate
 metric = evaluate.load("wer")

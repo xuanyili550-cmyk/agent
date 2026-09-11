@@ -593,8 +593,9 @@ class ClassConditionedUnet(nn.Module):
         # Feed this to the UNet alongside the timestep and return the prediction
         return self.model(net_input, t).sample  # (bs, 1, 28, 28)
 
-    # Create a scheduler
-    noise_scheduler = DDPMScheduler(num_train_timesteps=1000, beta_schedule='squaredcos_cap_v2')
+
+# Create a scheduler（模块级，原来缩进在类体里导致下面训练循环里 noise_scheduler 未定义）
+noise_scheduler = DDPMScheduler(num_train_timesteps=1000, beta_schedule='squaredcos_cap_v2')
 
 
 #@markdown Training loop (10 Epochs):

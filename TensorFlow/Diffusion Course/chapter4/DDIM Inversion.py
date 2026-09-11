@@ -259,7 +259,7 @@ import torch, random
 import numpy as np
 import torch.nn.functional as F
 from tqdm.auto import tqdm
-from IPython.display import Audio
+from IPython.display import Audio, display
 from matplotlib import pyplot as plt
 from diffusers import DiffusionPipeline
 from torchaudio import transforms as AT

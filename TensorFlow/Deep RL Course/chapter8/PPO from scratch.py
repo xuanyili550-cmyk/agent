@@ -43,12 +43,13 @@ from wasabi import Printer
 msg = Printer()
 
 # Adding HuggingFace argument
-parser.add_argument(
-    "--repo-id",
-    type=str,
-    default="ThomasSimonini/ppo-CartPole-v1",
-    help="id of the model repository from the Hugging Face Hub {username/repo_name}",
-)
+# （课程要求把这个参数加进 parse_args()；下方完整脚本里已经有了，这里只保留讲解片段）
+# parser.add_argument(
+#     "--repo-id",
+#     type=str,
+#     default="ThomasSimonini/ppo-CartPole-v1",
+#     help="id of the model repository from the Hugging Face Hub {username/repo_name}",
+# )
 
 
 
@@ -294,15 +295,16 @@ def _add_logdir(local_path: Path, logdir: Path):
 
 
 # Create the evaluation environment
-eval_env = gym.make(args.env_id)
-
-package_to_hub(
-    repo_id=args.repo_id,
-    model=agent,  # The model we want to save
-    hyperparameters=args,
-    eval_env=gym.make(args.env_id),
-    logs=f"runs/{run_name}",
-)
+# （课程要求把这段加到训练脚本 main 的末尾；下方完整脚本的 __main__ 里已经有了，这里只保留讲解片段）
+# eval_env = gym.make(args.env_id)
+#
+# package_to_hub(
+#     repo_id=args.repo_id,
+#     model=agent,  # The model we want to save
+#     hyperparameters=args,
+#     eval_env=gym.make(args.env_id),
+#     logs=f"runs/{run_name}",
+# )
 
 
 

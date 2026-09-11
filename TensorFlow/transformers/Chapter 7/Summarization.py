@@ -610,6 +610,7 @@ optimizer = AdamW(get_grouped_params(model), lr=5e-4)
 from accelerate import Accelerator
 
 accelerator = Accelerator(fp16=True)
+samples_per_step = accelerator.state.num_processes * 32  # 每步样本数 = 进程数 × batch_size(32)
 
 model, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
     model, optimizer, train_dataloader, eval_dataloader

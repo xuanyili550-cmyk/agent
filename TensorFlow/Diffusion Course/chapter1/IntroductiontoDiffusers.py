@@ -275,7 +275,8 @@ image = pipeline().images[0]
 image
 """
 
-card = ModelCard(content) card.push_to_hub(hub_model_id)
+card = ModelCard(content)
+card.push_to_hub(hub_model_id)
 
 
 from diffusers import DDPMPipeline

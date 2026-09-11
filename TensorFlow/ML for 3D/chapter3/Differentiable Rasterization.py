@@ -12,11 +12,11 @@
 ================================================================================
 """
 
-#高斯飞溅是一种可微的栅格化技术。
-splat2d = splat.project_and_sort()
-for point in splat2d:
-    for pixel in image:
-        pixel += compute_contribution(point, pixel)
+#高斯飞溅是一种可微的栅格化技术。（下面是课程的伪代码：投影→排序→逐像素累加贡献，不是可运行代码）
+# splat2d = splat.project_and_sort()
+# for point in splat2d:
+#     for pixel in image:
+#         pixel += compute_contribution(point, pixel)
 
 import torch
 from diffusers import DiffusionPipeline

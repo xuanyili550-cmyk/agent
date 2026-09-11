@@ -16,6 +16,10 @@
 #特征匹配
 import cv2
 import numpy as np
+
+# 自备两张图（课程 notebook 在前面 cell 读入；这里补上，否则 img1/img2 未定义）
+img1 = cv2.imread("image1.jpg", cv2.IMREAD_GRAYSCALE)
+img2 = cv2.imread("image2.jpg", cv2.IMREAD_GRAYSCALE)
 #使用 SIFT 进行暴力破解
 sift = cv2.SIFT_create()
 kp1, des1 = sift.detectAndCompute(img1, None)
@@ -104,8 +108,8 @@ from kornia_moons.viz import draw_LAF_matches
 
 from kornia.feature import LoFTR
 #加载并调整图像大小。
-img1 = K.io.load_image(image1.jpg, K.io.ImageLoadType.RGB32)[None, ...]
-img2 = K.io.load_image(image2.jpg, K.io.ImageLoadType.RGB32)[None, ...]
+img1 = K.io.load_image("image1.jpg", K.io.ImageLoadType.RGB32)[None, ...]
+img2 = K.io.load_image("image2.jpg", K.io.ImageLoadType.RGB32)[None, ...]
 
 img1 = K.geometry.resize(img1, (512, 512), antialias=True)
 img2 = K.geometry.resize(img2, (512, 512), antialias=True)
@@ -113,6 +117,12 @@ img2 = K.geometry.resize(img2, (512, 512), antialias=True)
 matcher = LoFTR(pretrained="outdoor")
 
 matcher = LoFTR(pretrained="outdoor")
+
+# LoFTR 只吃灰度图，输入是 {"image0", "image1"} 字典
+input_dict = {
+    "image0": K.color.rgb_to_grayscale(img1),
+    "image1": K.color.rgb_to_grayscale(img2),
+}
 
 with torch.inference_mode():
     correspondences = matcher(input_dict)

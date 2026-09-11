@@ -129,10 +129,10 @@ from huggingface_sb3 import package_to_hub
 
 ## TODO: Define a repo_id
 ## repo_id is the id of the model repository from the Hugging Face Hub (repo_id = {organization}/{repo_name} for instance ThomasSimonini/ppo-LunarLander-v2
-repo_id =
+repo_id = "your-hf-username/ppo-LunarLander-v2"  # TODO: 换成你自己的 {username}/{repo_name}
 
 # TODO: Define the name of the environment
-env_id =
+env_id = "LunarLander-v2"
 
 # Create the evaluation env and set the render_mode="rgb_array"
 eval_env = DummyVecEnv([lambda: gym.make(env_id, render_mode="rgb_array")])

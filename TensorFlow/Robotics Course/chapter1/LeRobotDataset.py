@@ -12,6 +12,8 @@
 ================================================================================
 """
 
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
 # Simple: current observation → current action
 delta_timestamps = {
     "observation.images.up": [0.0],  # Just current frame
@@ -54,8 +56,6 @@ sample = dataset[100]
 # Images shape: [2, C, H, W] - 2 observation frames
 # Action shape: [4, action_dim] - 4 action predictions
 
-
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 # Downloads dataset to local cache
 dataset = LeRobotDataset("lerobot/svla_so101_pickplace")

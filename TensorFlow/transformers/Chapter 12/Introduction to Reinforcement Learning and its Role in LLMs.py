@@ -120,20 +120,22 @@ advantages = (rewards - mean_grouped_rewards) / (std_grouped_rewards + 1e-8)
 advantages = advantages.unsqueeze( 1 )
 # 计算新旧政策之间的概率比
 # 形状：(B*G, seq_len) seq_len 是输出的长度，即生成的标记数，为了简单起见，这里我们假设它是 1 # (8, 1)
+# 说明：per_token_logps(旧策略) / new_per_token_logps(新策略) 在 TRL 里由模型前向算出，这里用随机张量占位演示形状
+per_token_logps = torch.randn(batch_size * num_generations, 1)      # 旧策略每 token 的 log-prob (8, 1)
+new_per_token_logps = torch.randn(batch_size * num_generations, 1)  # 新策略每 token 的 log-prob (8, 1)
+cliprange = 0.2  # TRL 里是 self.cliprange
+beta = 0.04      # KL 惩罚系数，TRL 里是 self.beta
+
 ratio = torch.exp(
     new_per_token_logps - per_token_logps
 )
 # 裁剪函数
-eps = self.cliprange   # 例如 0.2
+eps = cliprange   # 例如 0.2
 pg_losses1 = -advantages * ratio   # 形状：(B*G, seq_len) #(8, 1)
 pg_losses2 = -advantages * torch.clamp(
     ratio, 1.0 - eps, 1.0 + eps
 )   # 形状：(B*G, seq_len) #(8, 1)
 pg_loss_max = torch.max ( pg_losses1, pg_losses2)   # 形状：(B*G, seq_len) #(8, 1)
-
-
-# 现在与 KL 惩罚项结合 # 形状：(B*G, seq_len) #(8, 1)
-per_token_loss = pg_loss_max + self.beta * per_token_kl
 
 # Shape: (B*G, seq_len) #(8, 1)
 per_token_kl = F.kl_div(
@@ -141,6 +143,9 @@ per_token_kl = F.kl_div(
     F.softmax(per_token_logps, dim=-1),
     reduction="none",
 ).sum(dim=-1, keepdim=True)
+
+# 现在与 KL 惩罚项结合 # 形状：(B*G, seq_len) #(8, 1)
+per_token_loss = pg_loss_max + beta * per_token_kl
 
 
 #在 TRL 中实施 GRPO
@@ -215,6 +220,12 @@ def reward_len(completions, **kwargs):
     ideal_length = 20
     return [-abs(ideal_length - len(completion)) for completion in completions]
 #基于规则的、针对可验证任务的奖励
+def extract_final_answer(completion: str) -> str:
+    """简化版解析：取回复最后一行当作答案（真实场景要按数据集的答案格式解析）"""
+    lines = [line.strip() for line in completion.strip().splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
 def problem_reward(completions, answers, **kwargs):
     """Reward function for math problems with verifiable answers
     completions: list of completions to evaluate
@@ -341,6 +352,9 @@ generate_kwargs = {
     "temperature": 0.5,
     "min_p": 0.1,
 }
+
+prompt = "What is the capital of France? Think step by step."
+messages = [{"role": "user", "content": prompt}]
 
 generated_text = generator(messages, generate_kwargs=generate_kwargs)
 

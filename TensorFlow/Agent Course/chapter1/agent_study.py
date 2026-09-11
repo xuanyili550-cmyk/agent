@@ -1,5 +1,45 @@
 from transformers import AutoTokenizer
 
+# 课程里的 ReAct 系统提示（原 notebook 在前面 cell 定义，这里补上，否则 SYSTEM_PROMPT / messages 未定义）
+SYSTEM_PROMPT = """Answer the following questions as best you can. You have access to the following tools:
+
+get_weather: Get the current weather in a given location
+
+The way you use the tools is by specifying a json blob.
+Specifically, this json should have an `action` key (with the name of the tool to use) and an `action_input` key (with the input to the tool going here).
+
+The only values that should be in the "action" field are:
+get_weather: Get the current weather in a given location, args: {"location": {"type": "string"}}
+example use :
+
+{
+  "action": "get_weather",
+  "action_input": {"location": "New York"}
+}
+
+ALWAYS use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about one action to take. Only one action at a time in this format:
+Action:
+
+$JSON_BLOB (inside markdown cell)
+
+Observation: the result of the action. This Observation is unique, complete, and the source of truth.
+... (this Thought/Action/Observation can repeat N times, you should take several steps when needed. The $JSON_BLOB must be formatted as markdown and only use a SINGLE action at a time.)
+
+You must always end your output with the following format:
+
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Now begin! Reminder to ALWAYS use the exact characters `Final Answer:` when you provide a definitive answer. """
+
+messages = [
+    {"role": "system", "content": SYSTEM_PROMPT},
+    {"role": "user", "content": "What's the weather in London ?"},
+]
+
 tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolLM2-1.7B-Instruct")
 rendered_prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
@@ -58,6 +98,10 @@ class Tool:
         """
         return self.func(*args, **kwargs)
 
+def calculator(a: int, b: int) -> int:
+    """Multiply two integers."""
+    return a * b
+
 calculator_tool = Tool(
     "calculator",                   # name
     "Multiply two integers.",       # description
@@ -65,6 +109,52 @@ calculator_tool = Tool(
     [("a", "int"), ("b", "int")],   # inputs (names and types)
     "int",                          # output
 )
+
+# 课程里的 @tool 装饰器：用 inspect 读函数签名/docstring，自动组装成 Tool 实例
+import inspect
+
+def tool(func):
+    """
+    把普通函数包装成 Tool 实例的装饰器：签名→参数列表，docstring→描述，函数名→工具名。
+    """
+    # 读取函数签名
+    signature = inspect.signature(func)
+
+    # 提取 (参数名, 参数类型注解) 作为输入描述
+    arguments = []
+    for param in signature.parameters.values():
+        annotation_name = (
+            param.annotation.__name__
+            if hasattr(param.annotation, '__name__')
+            else str(param.annotation)
+        )
+        arguments.append((param.name, annotation_name))
+
+    # 取返回值的类型注解；没写注解就给个提示文本
+    return_annotation = signature.return_annotation
+    if return_annotation is inspect._empty:
+        outputs = "No return annotation"
+    else:
+        outputs = (
+            return_annotation.__name__
+            if hasattr(return_annotation, '__name__')
+            else str(return_annotation)
+        )
+
+    # 用函数的 docstring 当工具描述（没写就用默认文本）
+    description = func.__doc__ or "No description provided."
+
+    # 函数名就是工具名
+    name = func.__name__
+
+    # 组装成 Tool 实例返回
+    return Tool(
+        name=name,
+        description=description,
+        func=func,
+        arguments=arguments,
+        outputs=outputs
+    )
 
 @tool
 def calculator(a: int, b: int) -> int:

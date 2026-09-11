@@ -23,7 +23,7 @@ import numpy as np
 from collections import deque
 
 import matplotlib.pyplot as plt
-%matplotlib inline
+# %matplotlib inline   # notebook 魔法命令，纯 .py 里不合法，保留作注释
 
 # PyTorch
 import torch
@@ -57,17 +57,18 @@ a_size = env.action_space.n
 class Policy(nn.Module):
     def __init__(self, s_size, a_size, h_size):
         super(Policy, self).__init__()
-        # Create two fully connected layers
-
-
+        # Create two fully connected layers（练习模板，按下面的参考答案补全）
+        self.fc1 = nn.Linear(s_size, h_size)
+        self.fc2 = nn.Linear(h_size, a_size)
 
     def forward(self, x):
         # Define the forward pass
         # state goes to fc1 then we apply ReLU activation function
-
+        x = F.relu(self.fc1(x))
         # fc1 outputs goes to fc2
-
+        x = self.fc2(x)
         # We output the softmax
+        return F.softmax(x, dim=1)
 
     def act(self, state):
         """
@@ -124,12 +125,12 @@ def reinforce(policy, optimizer, n_training_episodes, max_t, gamma, print_every)
     for i_episode in range(1, n_training_episodes+1):
         saved_log_probs = []
         rewards = []
-        state = # TODO: reset the environment
+        state = env.reset()  # TODO: reset the environment（练习模板，按下面参考答案补全）
         # Line 4 of pseudocode
         for t in range(max_t):
-            action, log_prob = # TODO get the action
+            action, log_prob = policy.act(state)  # TODO get the action
             saved_log_probs.append(log_prob)
-            state, reward, done, _ = # TODO: take an env step
+            state, reward, done, _ = env.step(action)  # TODO: take an env step
             rewards.append(reward)
             if done:
                 break
@@ -170,7 +171,7 @@ def reinforce(policy, optimizer, n_training_episodes, max_t, gamma, print_every)
         ## a normal python list would instead require O(N) to do this.
         for t in range(n_steps)[::-1]:
             disc_return_t = (returns[0] if len(returns)>0 else 0)
-            returns.appendleft(    ) # TODO: complete here
+            returns.appendleft(gamma * disc_return_t + rewards[t]) # TODO: complete here（练习模板，按下面参考答案补全）
 
         ## standardization of the returns is employed to make training more stable
         eps = np.finfo(np.float32).eps.item()

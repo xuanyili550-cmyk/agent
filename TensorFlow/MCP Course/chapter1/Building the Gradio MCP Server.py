@@ -186,6 +186,16 @@ async def tool_name(param1: str, param2: bool = True) -> str:
     return json.dumps(result)
 
 
+def _get_changed_files(base_branch: str) -> list:
+    """列出相对 base_branch 变更过的文件名（原片段写成 self._get_changed_files，但这里不在类里）"""
+    names = subprocess.run(
+        ["git", "diff", "--name-only", f"{base_branch}...HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    return [line for line in names.stdout.splitlines() if line]
+
+
 @mcp.tool()
 async def analyze_file_changes(base_branch: str = "main",
                                include_diff: bool = True,
@@ -225,7 +235,7 @@ async def analyze_file_changes(base_branch: str = "main",
             "stats": stats_result.stdout,
             "total_lines": len(diff_lines),
             "diff": diff_output if include_diff else "Use include_diff=true to see diff",
-            "files_changed": self._get_changed_files(base_branch)
+            "files_changed": _get_changed_files(base_branch)
         })
 
     except Exception as e:
