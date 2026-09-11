@@ -1,0 +1,111 @@
+{
+  "story_bible": {
+    "id": "story_001",
+    "title": "重生之豪门逆袭",
+    "logline": "豪门千金苏晚晚被继妹与未婚夫联手构陷惨死，重生回到三年前订婚夜展开复仇。",
+    "genre": [
+      "rebirth",
+      "revenge",
+      "ceo_drama"
+    ],
+    "themes": [
+      "复仇",
+      "重生",
+      "豪门权斗"
+    ],
+    "tone": "紧张、强爽感、多重反转",
+    "target_audience": "18-35岁女性，短剧竖屏平台用户",
+    "main_conflict": "苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗",
+    "unique_selling_point": "开局即高能死亡重生+豪门商战+双强携手复仇",
+    "episode_count_planned": 12,
+    "world": {
+      "id": "world_001",
+      "name": "临江市豪门圈",
+      "description": "虚构现代都市临江市，以修远集团、苏氏集团为首的多家家族企业盘踞其中。",
+      "time_period": "架空现代都市",
+      "locations": [
+        {
+          "id": "loc_engagement_hall",
+          "name": "临江洲际酒店订婚宴会厅",
+          "description": "豪门酒会地标",
+          "mood": "奢华、压迫"
+        },
+        {
+          "id": "loc_su_mansion",
+          "name": "苏氏公馆",
+          "description": "苏晚晚从小长大的老宅",
+          "mood": "表面温情、暗流涌动"
+        }
+      ],
+      "organizations": [
+        "修远集团",
+        "苏氏集团"
+      ],
+      "social_rules": [
+        "豪门联姻是维系家族利益的常见手段"
+      ],
+      "tone": "都市精英、冷峻、强反转"
+    },
+    "character_ids": [
+      "char_su_wanwan",
+      "char_lu_jingchen",
+      "char_su_mengyao"
+    ]
+  },
+  "season_arcs": [
+    {
+      "id": "season_001",
+      "season_number": 1,
+      "title": "重生之豪门逆袭·第1季",
+      "synopsis": "豪门千金苏晚晚被继妹与未婚夫联手构陷惨死，重生回到三年前订婚夜展开复仇。",
+      "central_question": "主角能否在「苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗」中逆转局势？",
+      "resolution": "随各集剧情推进逐步揭示，最终在最后一幕完成清算与反转",
+      "beats": [
+        {
+          "act": "第一幕：重生/开局与建立强钩子",
+          "description": "第一幕：重生/开局与建立强钩子：推进「苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗」这一核心矛盾",
+          "episode_ids": [
+            "ep_001",
+            "ep_002",
+            "ep_003",
+            "ep_004"
+          ]
+        },
+        {
+          "act": "第二幕：冲突升级与正面交锋",
+          "description": "第二幕：冲突升级与正面交锋：推进「苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗」这一核心矛盾",
+          "episode_ids": [
+            "ep_005",
+            "ep_006",
+            "ep_007",
+            "ep_008"
+          ]
+        },
+        {
+          "act": "第三幕：真相揭晓与最终清算",
+          "description": "第三幕：真相揭晓与最终清算：推进「苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗」这一核心矛盾",
+          "episode_ids": [
+            "ep_009",
+            "ep_010",
+            "ep_011",
+            "ep_012"
+          ]
+        }
+      ],
+      "episode_ids": [
+        "ep_001",
+        "ep_002",
+        "ep_003",
+        "ep_004",
+        "ep_005",
+        "ep_006",
+        "ep_007",
+        "ep_008",
+        "ep_009",
+        "ep_010",
+        "ep_011",
+        "ep_012"
+      ]
+    }
+  ]
+}

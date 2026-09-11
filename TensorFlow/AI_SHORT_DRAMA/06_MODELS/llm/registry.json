@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Qwen2.5-7B-Instruct",
+    "type": "llm",
+    "source": "huggingface",
+    "license": "Apache-2.0",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "Qwen/Qwen2.5-7B-Instruct",
+    "version": "2.5",
+    "notes": "Apache-2.0, no usage restrictions beyond the standard license terms. Verify against the current model card before relying on this for production."
+  },
+  {
+    "name": "Mistral-7B-Instruct-v0.3",
+    "type": "llm",
+    "source": "huggingface",
+    "license": "Apache-2.0",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "mistralai/Mistral-7B-Instruct-v0.3",
+    "version": "0.3",
+    "notes": "Apache-2.0. Verify against the current model card before relying on this for production."
+  },
+  {
+    "name": "Llama-3.1-8B-Instruct",
+    "type": "llm",
+    "source": "huggingface",
+    "license": "Llama 3.1 Community License",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "meta-llama/Llama-3.1-8B-Instruct",
+    "version": "3.1",
+    "notes": "Custom Meta license, not OSI-approved. Commercial use is allowed but products with >700M monthly active users need a separate license from Meta, and attribution ('Built with Llama') is required. Gated repo requiring HF access approval. Self-verify current terms before commercial use."
+  },
+  {
+    "name": "Phi-3.5-mini-instruct",
+    "type": "llm",
+    "source": "huggingface",
+    "license": "MIT",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "microsoft/Phi-3.5-mini-instruct",
+    "version": "3.5",
+    "notes": "MIT, ungated (no HF access request needed unlike Llama). Default model for 02_STORY_ENGINE/agents/base.py's LocalTransformersProvider -- runs fully offline once weights are cached, no API key. Small (3.8B params), so weaker at long-context structured JSON output than the 7-8B options above; increase max_retries in BaseAgent if validation failures are frequent."
+  },
+  {
+    "name": "Gemma-2-9b-it",
+    "type": "llm",
+    "source": "huggingface",
+    "license": "Gemma Terms of Use",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "google/gemma-2-9b-it",
+    "version": "2.0",
+    "notes": "Custom Google license, not OSI-approved but permits commercial use with some prohibited-use restrictions. Gated repo requiring HF access approval. Self-verify current terms before commercial use."
+  }
+]

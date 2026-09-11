@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+websockets
+transformers>=4.44
+torch
+# 本地 LLM：Mac 用 mlx-lm；Linux/Docker 换 Ollama(OpenAI 兼容)或 vLLM
+mlx-lm ; platform_machine == "arm64" and sys_platform == "darwin"

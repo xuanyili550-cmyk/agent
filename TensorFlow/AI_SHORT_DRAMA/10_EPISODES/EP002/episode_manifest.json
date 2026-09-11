@@ -1,0 +1,65 @@
+{
+  "episode_id": "EP002",
+  "series_id": "SR-CEO-REVENGE-001",
+  "episode_number": 2,
+  "title": "三年后我带着孩子归来",
+  "video_path": "09_POST/EP002/final/EP002_1080x1920_final.mp4",
+  "duration_sec": 105.0,
+  "subtitle_path": "09_POST/EP002/subtitles/EP002_en.srt",
+  "shot_ids": [
+    "EP002_SH001",
+    "EP002_SH002",
+    "EP002_SH003",
+    "EP002_SH004",
+    "EP002_SH005",
+    "EP002_SH006"
+  ],
+  "qc_report_ref": "08_QC/reports/EP002_qc_report.json",
+  "publish_status_per_platform": {
+    "reelshort": {
+      "platform": "reelshort",
+      "status": "pending",
+      "remote_id": null,
+      "remote_url": null,
+      "last_attempt_at": "2026-08-02T10:15:00Z",
+      "error_message": null
+    },
+    "dramabox": {
+      "platform": "dramabox",
+      "status": "not_submitted",
+      "remote_id": null,
+      "remote_url": null,
+      "last_attempt_at": null,
+      "error_message": null
+    },
+    "goodshort": {
+      "platform": "goodshort",
+      "status": "not_submitted",
+      "remote_id": null,
+      "remote_url": null,
+      "last_attempt_at": null,
+      "error_message": null
+    },
+    "tiktok": {
+      "platform": "tiktok",
+      "status": "published",
+      "remote_id": "7312345678901234567",
+      "remote_url": "https://www.tiktok.com/@example/video/7312345678901234567",
+      "last_attempt_at": "2026-08-02T11:00:00Z",
+      "error_message": null
+    },
+    "youtube": {
+      "platform": "youtube",
+      "status": "failed",
+      "remote_id": null,
+      "remote_url": null,
+      "last_attempt_at": "2026-08-02T11:05:00Z",
+      "error_message": "quotaExceeded: The user has exceeded the daily quota for uploads."
+    }
+  },
+  "created_at": "2026-08-02T09:00:00Z",
+  "updated_at": "2026-08-02T11:05:00Z",
+  "language": "en",
+  "is_free": false,
+  "unlock_price_credits": 20
+}

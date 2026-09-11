@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Stable Video Diffusion img2vid-xt",
+    "type": "video",
+    "source": "huggingface",
+    "license": "Stable Video Diffusion Non-Commercial Community License",
+    "commercial_use_allowed": false,
+    "hf_id_or_local_path": "stabilityai/stable-video-diffusion-img2vid-xt",
+    "version": "1.0",
+    "notes": "Research/non-commercial license by default; Stability AI sells a separate commercial license. Do not use in a commercial pipeline without purchasing that license. Self-verify current terms."
+  },
+  {
+    "name": "Mochi 1 preview",
+    "type": "video",
+    "source": "huggingface",
+    "license": "Apache-2.0",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "genmo/mochi-1-preview",
+    "version": "1-preview",
+    "notes": "Apache-2.0 per Genmo's release. It is a preview-tagged checkpoint, so quality/stability guarantees are limited -- self-verify the current model card before commercial reliance."
+  }
+]

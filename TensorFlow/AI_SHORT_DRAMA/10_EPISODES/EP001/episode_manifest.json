@@ -1,0 +1,64 @@
+{
+  "episode_id": "EP001",
+  "series_id": "SR-CEO-REVENGE-001",
+  "episode_number": 1,
+  "title": "他说我配不上他的儿子",
+  "video_path": "09_POST/EP001/final/EP001_1080x1920_final.mp4",
+  "duration_sec": 92.5,
+  "subtitle_path": "09_POST/EP001/subtitles/EP001_en.srt",
+  "shot_ids": [
+    "EP001_SH001",
+    "EP001_SH002",
+    "EP001_SH003",
+    "EP001_SH004",
+    "EP001_SH005"
+  ],
+  "qc_report_ref": "08_QC/reports/EP001_qc_report.json",
+  "publish_status_per_platform": {
+    "reelshort": {
+      "platform": "reelshort",
+      "status": "not_submitted",
+      "remote_id": null,
+      "remote_url": null,
+      "last_attempt_at": null,
+      "error_message": null
+    },
+    "dramabox": {
+      "platform": "dramabox",
+      "status": "not_submitted",
+      "remote_id": null,
+      "remote_url": null,
+      "last_attempt_at": null,
+      "error_message": null
+    },
+    "goodshort": {
+      "platform": "goodshort",
+      "status": "not_submitted",
+      "remote_id": null,
+      "remote_url": null,
+      "last_attempt_at": null,
+      "error_message": null
+    },
+    "tiktok": {
+      "platform": "tiktok",
+      "status": "not_submitted",
+      "remote_id": null,
+      "remote_url": null,
+      "last_attempt_at": null,
+      "error_message": null
+    },
+    "youtube": {
+      "platform": "youtube",
+      "status": "not_submitted",
+      "remote_id": null,
+      "remote_url": null,
+      "last_attempt_at": null,
+      "error_message": null
+    }
+  },
+  "created_at": "2026-08-01T09:00:00Z",
+  "updated_at": null,
+  "language": "en",
+  "is_free": true,
+  "unlock_price_credits": null
+}

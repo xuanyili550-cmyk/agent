@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Stable Diffusion XL Base 1.0",
+    "type": "image",
+    "source": "huggingface",
+    "license": "CreativeML Open RAIL++-M",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "stabilityai/stable-diffusion-xl-base-1.0",
+    "version": "1.0",
+    "notes": "OpenRAIL++-M license permits commercial use but carries use-based content restrictions (no generating illegal/harmful content, etc.) baked into the license text itself. Self-verify the full license before commercial deployment."
+  },
+  {
+    "name": "FLUX.1-schnell",
+    "type": "image",
+    "source": "huggingface",
+    "license": "Apache-2.0",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "black-forest-labs/FLUX.1-schnell",
+    "version": "1.0",
+    "notes": "Apache-2.0, commercial use allowed. Do not confuse with FLUX.1-dev, which ships under a separate non-commercial license."
+  },
+  {
+    "name": "FLUX.1-dev",
+    "type": "image",
+    "source": "huggingface",
+    "license": "FLUX.1-dev Non-Commercial License",
+    "commercial_use_allowed": false,
+    "hf_id_or_local_path": "black-forest-labs/FLUX.1-dev",
+    "version": "1.0",
+    "notes": "Non-commercial / research-only license from Black Forest Labs. Included for reference only -- do not use in a commercial pipeline. Use FLUX.1-schnell instead if Apache-2.0 licensing is required."
+  }
+]

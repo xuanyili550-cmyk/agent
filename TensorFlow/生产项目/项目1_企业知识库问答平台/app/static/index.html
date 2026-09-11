@@ -1,0 +1,20 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>企业知识库问答</title>
+<style>body{font-family:-apple-system,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;background:#0f172a;color:#e2e8f0}
+textarea,input{width:100%;padding:10px;margin:6px 0;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#e2e8f0}
+button{padding:8px 16px;border:0;border-radius:8px;background:#4f46e5;color:#fff;cursor:pointer}
+.box{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;margin:12px 0}</style></head>
+<body><h2>🧠 企业知识库问答</h2>
+<div class="box"><h3>1. 入库文档</h3>
+<input id="name" placeholder="文档名" value="faq">
+<textarea id="doc" rows="4">退货政策是7天无理由退货,需保持商品完好。满99元包邮,否则运费10元。客服工作时间9点到18点。</textarea>
+<button onclick="ingest()">入库</button> <span id="ist"></span></div>
+<div class="box"><h3>2. 提问</h3>
+<input id="q" placeholder="问一个问题" value="怎么退货?">
+<button onclick="ask()">提问</button>
+<div id="ans" style="margin-top:10px;white-space:pre-wrap"></div></div>
+<script>
+async function post(u,b){const r=await fetch(u,{method:b?'POST':'GET',headers:{'content-type':'application/json'},body:b&&JSON.stringify(b)});return r.json()}
+async function ingest(){const r=await post('/api/documents',{name:name.value,text:doc.value});ist.textContent='✅ '+r.chunks+' 块'}
+async function ask(){ans.textContent='...';const r=await post('/api/query',{query:q.value});ans.textContent='【'+r.route+'】\n'+r.answer+'\n\n来源:'+r.sources.map(s=>s.id).join(', ')}
+</script></body></html>

@@ -1,0 +1,28 @@
+# 一键部署：Agent 后端 + Ollama(本地 LLM 后端) + (可选)向量库
+# 用法：docker compose up --build   →  WebSocket ws://localhost:8000/ws/research
+services:
+  agent-backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - LLM_BASE_URL=http://ollama:11434/v1      # Linux 上用 Ollama 代替 mlx(OpenAI 兼容)
+      - LLM_MODEL=qwen2.5:0.5b
+    depends_on:
+      - ollama
+
+  ollama:                                         # 本地 LLM 服务(跨平台，替代 mlx)
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # 起来后拉模型：docker compose exec ollama ollama pull qwen2.5:0.5b
+
+  # 生产可再加向量库(Qdrant/Milvus)、Redis 缓存等：
+  # qdrant:
+  #   image: qdrant/qdrant
+  #   ports: ["6333:6333"]
+
+volumes:
+  ollama_data:

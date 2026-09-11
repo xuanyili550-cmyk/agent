@@ -1,0 +1,10 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+pydantic-settings>=2.2
+pillow>=10.0
+# 高音质 TTS 后端(默认)：Apple MLX + Kokoro；首次调用会从 HF 下载模型(~几百 MB)
+mlx-audio>=0.2.0
+# 可选：装了自动启用全量准确英文音标(否则用内置常用词典+规则兜底)
+# eng-to-ipa>=0.0.2
+# 系统依赖(非 pip)：ffmpeg（brew install ffmpeg）；say(系统自带，作为 mlx 的兜底后端)

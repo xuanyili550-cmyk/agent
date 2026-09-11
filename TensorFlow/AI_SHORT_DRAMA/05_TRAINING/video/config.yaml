@@ -1,0 +1,24 @@
+# Template config for fine-tuning/LoRA-adapting a video diffusion model
+# (e.g. a Stable Video Diffusion / DiT-based video backbone). No training
+# script is implemented in this directory yet -- see README.md.
+
+model:
+  pretrained_model_name_or_path: stabilityai/stable-video-diffusion-img2vid-xt
+  resolution: 576
+  num_frames: 25
+  mixed_precision: fp16
+
+dataset:
+  manifest_path: ../../04_DATASET/metadata/video_manifest.jsonl
+  loader_function: build_video_dataset  # see 04_DATASET/dataset_loaders.py
+
+training:
+  train_batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 5.0e-5
+  lora_rank: 16
+  max_train_steps: 1000
+  seed: 42
+
+output:
+  output_dir: ./out/video-run1

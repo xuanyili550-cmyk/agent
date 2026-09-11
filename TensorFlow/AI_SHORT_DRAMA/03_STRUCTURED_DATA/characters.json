@@ -1,0 +1,217 @@
+{
+  "characters": [
+    {
+      "id": "char_su_wanwan",
+      "name": "苏晚晚",
+      "aliases": [
+        "苏大小姐"
+      ],
+      "role": "protagonist",
+      "gender": "female",
+      "age": 26,
+      "occupation": "苏氏集团原设计总监（重生前）",
+      "appearance": "鹅蛋脸，眼尾微挑，常年一身利落职业装，重生后眼神比从前更冷静锐利",
+      "personality_traits": [
+        "表面温顺",
+        "内心坚韧",
+        "极强的观察力",
+        "重情但不再天真"
+      ],
+      "backstory": "苏氏集团嫡女，生母早逝，父亲续弦后处处忍让继母与继妹，订婚当晚被继妹与未婚夫联手构陷侵吞公款，众叛亲离后坠楼身亡。",
+      "motivation": "阻止悲剧重演，揪出所有幕后黑手，夺回本该属于自己的一切",
+      "relationships": [
+        {
+          "character_id": "char_su_mengyao",
+          "relation_type": "rival",
+          "description": "名义上的继妹，实为夺权的最大威胁"
+        },
+        {
+          "character_id": "char_chen_hao",
+          "relation_type": "enemy",
+          "description": "前未婚夫，重生后果断划清界限"
+        },
+        {
+          "character_id": "char_lu_jingchen",
+          "relation_type": "ally",
+          "description": "重生夜意外结识，后成为复仇路上最重要的盟友"
+        },
+        {
+          "character_id": "char_wang_lifen",
+          "relation_type": "family",
+          "description": "继母，表面慈爱实则主谋之一"
+        }
+      ],
+      "arc_summary": "从隐忍受害者成长为冷静掌控全局的复仇者与商业强者",
+      "voice_style": "平静克制，情绪爆发时字字清晰、不歇斯底里"
+    },
+    {
+      "id": "char_lu_jingchen",
+      "name": "陆景琛",
+      "aliases": [
+        "陆总"
+      ],
+      "role": "deuteragonist",
+      "gender": "male",
+      "age": 31,
+      "occupation": "修远集团总裁",
+      "appearance": "身形挺拔，常年一身深色西装，气场冷峻，笑容极少",
+      "personality_traits": [
+        "城府深",
+        "重规则",
+        "外冷内热",
+        "护短"
+      ],
+      "backstory": "白手起家接手家族企业并将其扩张为临江第一集团，因幼年家变而极度厌恶背叛与算计。",
+      "motivation": "起初只是被苏晚晚的反常举动引起商业警觉，逐渐被她的坚韧打动，决定助她复仇",
+      "relationships": [
+        {
+          "character_id": "char_su_wanwan",
+          "relation_type": "ally",
+          "description": "从合作到心动的复杂关系"
+        },
+        {
+          "character_id": "char_lin_xi",
+          "relation_type": "employee",
+          "description": "陆景琛最信任的私人秘书"
+        }
+      ],
+      "arc_summary": "从疏离克制到主动敞开心扉，成为苏晚晚复仇路上的坚实后盾",
+      "voice_style": "低沉简练，惯用反问句，情绪外露极少"
+    },
+    {
+      "id": "char_su_mengyao",
+      "name": "苏梦瑶",
+      "aliases": [
+        "梦瑶"
+      ],
+      "role": "antagonist",
+      "gender": "female",
+      "age": 24,
+      "occupation": "苏氏集团市场部经理（挂名）",
+      "appearance": "甜美精致的妆容，笑容总是恰到好处地无辜",
+      "personality_traits": [
+        "嫉妒心强",
+        "擅长伪装",
+        "手段狠辣"
+      ],
+      "backstory": "王丽芬带来的继女，自幼觊觎苏晚晚的一切，联合母亲与陈皓策划构陷苏晚晚侵吞公款并致其坠楼。",
+      "motivation": "彻底取代苏晚晚，独占苏氏集团继承权与陈皓",
+      "relationships": [
+        {
+          "character_id": "char_su_wanwan",
+          "relation_type": "rival",
+          "description": "表面姐妹实为夺权对手"
+        },
+        {
+          "character_id": "char_wang_lifen",
+          "relation_type": "family",
+          "description": "母女同谋"
+        },
+        {
+          "character_id": "char_chen_hao",
+          "relation_type": "romantic",
+          "description": "暗中勾结的地下恋人"
+        }
+      ],
+      "arc_summary": "从伪装完美到步步露馅，最终身败名裂",
+      "voice_style": "声音甜腻，情绪激动时会破音露出真实的尖利"
+    },
+    {
+      "id": "char_chen_hao",
+      "name": "陈皓",
+      "aliases": [],
+      "role": "antagonist",
+      "gender": "male",
+      "age": 28,
+      "occupation": "陈氏地产少东家",
+      "appearance": "斯文清秀，笑容温和具有欺骗性",
+      "personality_traits": [
+        "软弱",
+        "贪婪",
+        "易受操纵"
+      ],
+      "backstory": "苏晚晚名义上的未婚夫，被苏梦瑶以感情与利益双重诱惑拉拢，参与构陷苏晚晚侵吞公款。",
+      "motivation": "借苏家与陈家联姻巩固地产生意，同时贪恋苏梦瑶的顺从与美貌",
+      "relationships": [
+        {
+          "character_id": "char_su_wanwan",
+          "relation_type": "enemy",
+          "description": "曾经的未婚夫，重生后被彻底看清"
+        },
+        {
+          "character_id": "char_su_mengyao",
+          "relation_type": "romantic",
+          "description": "地下恋情，实际上被其利用"
+        }
+      ],
+      "arc_summary": "从伪装深情到彻底暴露懦弱与贪婪的本质",
+      "voice_style": "语气温吞，心虚时习惯性重复对方的话"
+    },
+    {
+      "id": "char_wang_lifen",
+      "name": "王丽芬",
+      "aliases": [
+        "王夫人"
+      ],
+      "role": "antagonist",
+      "gender": "female",
+      "age": 52,
+      "occupation": "苏氏集团董事（继母）",
+      "appearance": "端庄雍容，说话总是慢条斯理",
+      "personality_traits": [
+        "城府极深",
+        "表面慈爱",
+        "冷酷算计"
+      ],
+      "backstory": "苏晚晚的继母，长年伪造账目与遗嘱证据，企图将苏氏集团彻底转移到亲生女儿苏梦瑶名下。",
+      "motivation": "确保苏梦瑶继承苏氏集团全部资产，掩盖多年的财务造假",
+      "relationships": [
+        {
+          "character_id": "char_su_wanwan",
+          "relation_type": "family",
+          "description": "表面继母实为构陷主谋"
+        },
+        {
+          "character_id": "char_su_mengyao",
+          "relation_type": "family",
+          "description": "亲生母女"
+        }
+      ],
+      "arc_summary": "从幕后操盘手到证据链曝光后彻底崩溃",
+      "voice_style": "语速缓慢，用词客气但暗藏威胁"
+    },
+    {
+      "id": "char_lin_xi",
+      "name": "林溪",
+      "aliases": [
+        "林秘书"
+      ],
+      "role": "supporting",
+      "gender": "female",
+      "age": 27,
+      "occupation": "陆景琛私人秘书",
+      "appearance": "干练短发，职业套装，永远带着平板电脑",
+      "personality_traits": [
+        "细心",
+        "忠诚",
+        "反应快"
+      ],
+      "backstory": "跟随陆景琛多年的得力助手，是他调查苏氏集团内幕的重要执行者。",
+      "motivation": "协助陆景琛完成商业布局，同时逐渐认同苏晚晚的正直",
+      "relationships": [
+        {
+          "character_id": "char_lu_jingchen",
+          "relation_type": "employer",
+          "description": "多年上下级，高度信任"
+        },
+        {
+          "character_id": "char_su_wanwan",
+          "relation_type": "ally",
+          "description": "从旁观者变为暗中支持者"
+        }
+      ],
+      "arc_summary": "从职业化的旁观者成长为坚定的同盟",
+      "voice_style": "语速快，条理清晰，习惯用数据说话"
+    }
+  ]
+}

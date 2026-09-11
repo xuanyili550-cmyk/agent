@@ -1,0 +1,6 @@
+# 本地(Mac Apple Silicon)：mlx-lm。上云换 vLLM(见 README)。
+gradio>=6.0
+mlx-lm ; platform_machine == "arm64" and sys_platform == "darwin"
+fastapi
+uvicorn
+pydantic>=2

@@ -1,0 +1,351 @@
+{
+  "shots": [
+    {
+      "id": "shot_001_01_01",
+      "episode": 1,
+      "scene": 1,
+      "shot": 1,
+      "scene_id": "scene_001",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "苏晚晚身穿染血礼服跌坐在宴会厅台阶下，四周宾客窃窃私语后退",
+      "emotion": "despair",
+      "camera": {
+        "shot_size": "close_up",
+        "angle": "high_angle",
+        "movement": "static",
+        "lens_notes": ""
+      },
+      "duration": 2.0,
+      "dialogue_ids": [],
+      "notes": "全剧开场第一个镜头，必须在3秒内建立强钩子"
+    },
+    {
+      "id": "shot_001_01_02",
+      "episode": 1,
+      "scene": 1,
+      "shot": 2,
+      "scene_id": "scene_001",
+      "character": [
+        "char_su_mengyao"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "苏梦瑶举着文件当众宣读，泪光中带着算计的笑意",
+      "emotion": "contempt",
+      "camera": {
+        "shot_size": "medium_close_up",
+        "angle": "low_angle",
+        "movement": "dolly_in",
+        "lens_notes": ""
+      },
+      "duration": 3.5,
+      "dialogue_ids": [
+        "dlg_001_01"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_01_03",
+      "episode": 1,
+      "scene": 1,
+      "shot": 3,
+      "scene_id": "scene_001",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "苏晚晚踉跄起身望向陈皓，眼神从愤怒转为绝望",
+      "emotion": "despair",
+      "camera": {
+        "shot_size": "close_up",
+        "angle": "eye_level",
+        "movement": "handheld",
+        "lens_notes": ""
+      },
+      "duration": 3.0,
+      "dialogue_ids": [
+        "dlg_001_02"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_01_04",
+      "episode": 1,
+      "scene": 1,
+      "shot": 4,
+      "scene_id": "scene_001",
+      "character": [
+        "char_chen_hao",
+        "char_su_wanwan"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "陈皓别过脸，语气冷漠地下达逐客令，宾客哗然",
+      "emotion": "contempt",
+      "camera": {
+        "shot_size": "two_shot",
+        "angle": "eye_level",
+        "movement": "static",
+        "lens_notes": ""
+      },
+      "duration": 3.5,
+      "dialogue_ids": [
+        "dlg_001_03"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_01_05",
+      "episode": 1,
+      "scene": 1,
+      "shot": 5,
+      "scene_id": "scene_001",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "混乱中苏晚晚被推搡跌下台阶，画面猛然定格再骤然反转为黑屏",
+      "emotion": "shock",
+      "camera": {
+        "shot_size": "extreme_long_shot",
+        "angle": "birds_eye",
+        "movement": "crane",
+        "lens_notes": ""
+      },
+      "duration": 2.5,
+      "dialogue_ids": [],
+      "notes": "接黑屏转场，进入重生瞬间"
+    },
+    {
+      "id": "shot_001_02_01",
+      "episode": 1,
+      "scene": 2,
+      "shot": 1,
+      "scene_id": "scene_002",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "苏氏公馆卧室",
+      "action": "苏晚晚猛然从床上坐起，大口喘息，双手下意识摸向自己完好无损的身体",
+      "emotion": "shock",
+      "camera": {
+        "shot_size": "medium_shot",
+        "angle": "eye_level",
+        "movement": "handheld",
+        "lens_notes": ""
+      },
+      "duration": 2.5,
+      "dialogue_ids": [],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_02_02",
+      "episode": 1,
+      "scene": 2,
+      "shot": 2,
+      "scene_id": "scene_002",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "苏氏公馆卧室",
+      "action": "特写手机锁屏日期定格在三年前订婚宴当天，苏晚晚瞳孔骤缩",
+      "emotion": "surprise",
+      "camera": {
+        "shot_size": "extreme_close_up",
+        "angle": "eye_level",
+        "movement": "zoom_in",
+        "lens_notes": ""
+      },
+      "duration": 2.0,
+      "dialogue_ids": [
+        "dlg_002_01"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_02_03",
+      "episode": 1,
+      "scene": 2,
+      "shot": 3,
+      "scene_id": "scene_002",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "苏氏公馆卧室",
+      "action": "苏晚晚起身走向梳妆镜，眼神从慌乱迅速转为冷静与杀意",
+      "emotion": "determination",
+      "camera": {
+        "shot_size": "medium_close_up",
+        "angle": "eye_level",
+        "movement": "dolly_in",
+        "lens_notes": ""
+      },
+      "duration": 3.0,
+      "dialogue_ids": [],
+      "notes": "情绪转折点，确立本集人物目标"
+    },
+    {
+      "id": "shot_001_03_01",
+      "episode": 1,
+      "scene": 3,
+      "shot": 1,
+      "scene_id": "scene_003",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "苏晚晚提前抵达空旷的宴会厅，环视四周布置，神情复杂",
+      "emotion": "anxiety",
+      "camera": {
+        "shot_size": "long_shot",
+        "angle": "eye_level",
+        "movement": "tracking",
+        "lens_notes": ""
+      },
+      "duration": 3.0,
+      "dialogue_ids": [],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_03_02",
+      "episode": 1,
+      "scene": 3,
+      "shot": 2,
+      "scene_id": "scene_003",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "苏晚晚站在台阶前，望着三年前坠落的位置低声立誓",
+      "emotion": "vengeful",
+      "camera": {
+        "shot_size": "close_up",
+        "angle": "low_angle",
+        "movement": "static",
+        "lens_notes": ""
+      },
+      "duration": 3.5,
+      "dialogue_ids": [
+        "dlg_003_01"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_03_03",
+      "episode": 1,
+      "scene": 3,
+      "shot": 3,
+      "scene_id": "scene_003",
+      "character": [
+        "char_lu_jingchen"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "陆景琛从阴影处走出，语气审视地开口询问",
+      "emotion": "calm",
+      "camera": {
+        "shot_size": "medium_shot",
+        "angle": "eye_level",
+        "movement": "static",
+        "lens_notes": ""
+      },
+      "duration": 3.0,
+      "dialogue_ids": [
+        "dlg_003_02"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_03_04",
+      "episode": 1,
+      "scene": 3,
+      "shot": 4,
+      "scene_id": "scene_003",
+      "character": [
+        "char_su_wanwan",
+        "char_lu_jingchen"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "苏晚晚猛然回头，与陆景琛四目相对，空气瞬间凝固",
+      "emotion": "shock",
+      "camera": {
+        "shot_size": "two_shot",
+        "angle": "eye_level",
+        "movement": "zoom_in",
+        "lens_notes": ""
+      },
+      "duration": 2.5,
+      "dialogue_ids": [],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_04_01",
+      "episode": 1,
+      "scene": 4,
+      "shot": 1,
+      "scene_id": "scene_004",
+      "character": [
+        "char_su_wanwan",
+        "char_lu_jingchen"
+      ],
+      "location": "宴会厅露台",
+      "action": "苏晚晚快步走向露台想要独处，陆景琛紧随其后拦住去路",
+      "emotion": "anxiety",
+      "camera": {
+        "shot_size": "medium_long_shot",
+        "angle": "eye_level",
+        "movement": "tracking",
+        "lens_notes": ""
+      },
+      "duration": 2.5,
+      "dialogue_ids": [],
+      "notes": ""
+    },
+    {
+      "id": "shot_001_04_02",
+      "episode": 1,
+      "scene": 4,
+      "shot": 2,
+      "scene_id": "scene_004",
+      "character": [
+        "char_lu_jingchen"
+      ],
+      "location": "宴会厅露台",
+      "action": "陆景琛逼近一步，居高临下地质问，夜风吹动他的衣角",
+      "emotion": "shock",
+      "camera": {
+        "shot_size": "close_up",
+        "angle": "low_angle",
+        "movement": "dolly_in",
+        "lens_notes": ""
+      },
+      "duration": 3.5,
+      "dialogue_ids": [
+        "dlg_004_01"
+      ],
+      "notes": "全集结尾悬念台词，需在此处硬切黑屏并叠加下集预告条"
+    },
+    {
+      "id": "shot_001_04_03",
+      "episode": 1,
+      "scene": 4,
+      "shot": 3,
+      "scene_id": "scene_004",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "宴会厅露台",
+      "action": "苏晚晚脸色骤白，瞳孔剧烈收缩，画面定格叠加'下集见'字样后硬切黑屏",
+      "emotion": "shock",
+      "camera": {
+        "shot_size": "extreme_close_up",
+        "angle": "eye_level",
+        "movement": "zoom_in",
+        "lens_notes": ""
+      },
+      "duration": 2.0,
+      "dialogue_ids": [],
+      "notes": "强悬念收尾镜头，驱动用户点击下一集"
+    }
+  ]
+}

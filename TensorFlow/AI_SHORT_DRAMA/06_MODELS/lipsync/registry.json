@@ -1,0 +1,32 @@
+[
+  {
+    "name": "MuseTalk",
+    "type": "lipsync",
+    "source": "huggingface",
+    "license": "creativeml-openrail-m (per HF Hub API license tag, checked 2026-09-10)",
+    "commercial_use_allowed": null,
+    "hf_id_or_local_path": "TMElyralab/MuseTalk",
+    "version": "1.5",
+    "notes": "Checked https://huggingface.co/api/models/TMElyralab/MuseTalk on 2026-09-10: repo-level license tag is 'creativeml-openrail-m' (the same family as SDXL's license above) -- permits commercial use but with use-based content restrictions baked into the license text itself. commercial_use_allowed left null pending reading the actual LICENSE file rather than trusting the tag alone; this is a stronger signal than 'unknown' but not a substitute for that read."
+  },
+  {
+    "name": "SadTalker",
+    "type": "lipsync",
+    "source": "huggingface",
+    "license": "mit (per HF Hub API license tag, checked 2026-09-10)",
+    "commercial_use_allowed": null,
+    "hf_id_or_local_path": "vinthony/SadTalker",
+    "version": "unknown",
+    "notes": "Checked https://huggingface.co/api/models/vinthony/SadTalker on 2026-09-10: repo-level license tag is 'mit'. commercial_use_allowed still left null because SadTalker's pipeline composes several third-party components (e.g. face-alignment, GFPGAN) each with their own license -- the top-level 'mit' tag doesn't cover those. Audit the full dependency chain, not just the top-level repo, before any use."
+  },
+  {
+    "name": "Wav2Lip",
+    "type": "lipsync",
+    "source": "github",
+    "license": "research/academic use only",
+    "commercial_use_allowed": false,
+    "hf_id_or_local_path": "Rudrabha/Wav2Lip",
+    "version": "unknown",
+    "notes": "The original repo's LICENSE explicitly restricts use to academic/research purposes and prohibits commercial use. No 07_GENERATION provider implements this: its checkpoint loading and face-detection preprocessing (S3FD) are involved enough that we chose not to write unverifiable integration code for it here. Free among the well-known open lip-sync options is largely a choice between 'no commercial license' (this) and 'license unclear' (MuseTalk/SadTalker above) -- there is no clearly commercial-friendly, well-established open-source lip-sync model at the time this registry was written. Re-check the landscape before committing to one."
+  }
+]

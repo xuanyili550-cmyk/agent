@@ -1,0 +1,10 @@
+# Virtual environments (README documents how to rebuild each one, e.g. .venv_xtts)
+.venv*/
+venv*/
+
+__pycache__/
+*.pyc
+
+# Local databases created by running 13_INFRA demos
+*.sqlite3
+*.db

@@ -1,0 +1,25 @@
+# Template config for full/LoRA fine-tuning of the base image model (SDXL/FLUX).
+# This directory intentionally ships config + README only -- for an actual
+# per-character or per-style LoRA run, use 05_TRAINING/character_lora or
+# 05_TRAINING/style_lora, whose scripts already implement the training loop.
+
+model:
+  pretrained_model_name_or_path: stabilityai/stable-diffusion-xl-base-1.0
+  resolution: 1024
+  mixed_precision: fp16
+
+dataset:
+  # one of: character_manifest.jsonl, scene_manifest.jsonl, style_manifest.jsonl
+  manifest_path: ../../04_DATASET/metadata/character_manifest.jsonl
+  loader_function: build_character_dataset  # see 04_DATASET/dataset_loaders.py
+
+training:
+  train_batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 1.0e-4
+  lora_rank: 16
+  max_train_steps: 1000
+  seed: 42
+
+output:
+  output_dir: ./out/image-run1

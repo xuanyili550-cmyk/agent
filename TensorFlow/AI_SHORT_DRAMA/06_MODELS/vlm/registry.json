@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Qwen2-VL-7B-Instruct",
+    "type": "vlm",
+    "source": "huggingface",
+    "license": "Apache-2.0",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "Qwen/Qwen2-VL-7B-Instruct",
+    "version": "2.0",
+    "notes": "Apache-2.0. Self-verify against the current model card before production use."
+  },
+  {
+    "name": "LLaVA-1.5-7B",
+    "type": "vlm",
+    "source": "huggingface",
+    "license": "llama2 (per HF Hub API license tag, checked 2026-09-10)",
+    "commercial_use_allowed": null,
+    "hf_id_or_local_path": "llava-hf/llava-1.5-7b-hf",
+    "version": "1.5",
+    "notes": "Checked https://huggingface.co/api/models/llava-hf/llava-1.5-7b-hf on 2026-09-10: repo-level license tag is 'llama2', confirming the merged weights carry the Llama 2 Community License (not a plain Apache-2.0), consistent with this being fine-tuned on a Llama-2 base. Llama 2's commercial terms include the same '>700M MAU needs a separate license from Meta' clause as Llama 3.1 above. Self-verify current terms before commercial use; the HF tag is a strong signal but not a substitute for reading the LICENSE file."
+  },
+  {
+    "name": "BLIP-2 OPT-2.7B",
+    "type": "vlm",
+    "source": "huggingface",
+    "license": "mit (per HF Hub API license tag, checked 2026-09-10)",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "Salesforce/blip2-opt-2.7b",
+    "version": "1.0",
+    "notes": "Checked https://huggingface.co/api/models/Salesforce/blip2-opt-2.7b on 2026-09-10: repo-level license tag is 'mit'. This supersedes an earlier, more cautious note in this file that guessed the OPT base model's non-commercial license might carry through -- the HF tag says otherwise, but self-verify against the actual LICENSE file before commercial use since HF tags are community/uploader-set metadata, not a legal source. Smaller/cheaper than the Qwen2-VL/LLaVA options above; already-used-in-this-project CLIP (see 08_QC) covers the image/text similarity scoring use case without needing this at all."
+  }
+]

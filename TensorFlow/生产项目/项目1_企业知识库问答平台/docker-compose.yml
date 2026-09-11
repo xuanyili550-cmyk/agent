@@ -1,0 +1,12 @@
+# 多服务编排:app + (可选)向量库/缓存。默认 stub 后端时 app 单服务即可跑。
+services:
+  app:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      - KB_EMBED_BACKEND=stub      # 生产改 hf
+      - KB_LLM_BACKEND=stub        # 生产改 openai,并配 KB_OPENAI_BASE
+    # depends_on: [qdrant]         # 生产上向量库时打开
+  # qdrant:
+  #   image: qdrant/qdrant
+  #   ports: ["6333:6333"]

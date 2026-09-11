@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+pydantic>=2
+pydantic-settings
+SQLAlchemy>=2
+langgraph
+openai
+httpx
+# 测试
+pytest
+# 本机 LLM(Mac)；生产用 openai 后端连 vLLM/Ollama，不需要这个
+mlx-lm ; platform_machine == "arm64" and sys_platform == "darwin"
+# 生产数据库驱动(按需)：
+# PyMySQL          # MySQL
+# psycopg[binary]  # PostgreSQL
+# alembic          # 迁移

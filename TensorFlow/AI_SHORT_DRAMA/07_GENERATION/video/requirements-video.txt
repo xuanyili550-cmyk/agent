@@ -1,0 +1,5 @@
+requests>=2.31
+# MochiLocalVideoProvider: free (Apache-2.0), no API key, needs a big GPU
+diffusers>=0.31
+torch>=2.3
+accelerate>=0.33

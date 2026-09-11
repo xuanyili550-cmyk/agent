@@ -1,0 +1,18 @@
+# ReelShort 目前没有公开的开发者/发布 API。
+# 这是一个占位配置：endpoint 是假的，实际接入前必须替换成平台方私下提供的地址与字段。
+endpoint: "https://REPLACE_WITH_REELSHORT_UPLOAD_ENDPOINT/api/v1/episodes"
+method: POST
+token_env_var: REELSHORT_API_TOKEN
+timeout_sec: 30
+headers:
+  Content-Type: "application/json"
+  X-Client-Id: "${REELSHORT_CLIENT_ID}"
+payload_template:
+  episode_id: "${episode_id}"
+  series_id: "${series_id}"
+  episode_number: "${episode_number}"
+  title: "${title}"
+  video_url: "${video_path}"
+  subtitle_url: "${subtitle_path}"
+  duration_sec: "${duration_sec}"
+  language: "${language}"

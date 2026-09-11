@@ -1,0 +1,117 @@
+# Consolidated requirements for AI_SHORT_DRAMA, grouped by module for reference.
+# Each module also keeps its own requirements-*.txt under its directory (unchanged);
+# this file is a convenience aggregate for setting up one environment that can run
+# everything. See README.md for the Python-version caveat: 04_DATASET/05_TRAINING
+# (anything that imports `datasets`) needs Python <=3.13, not the 3.14 default on
+# this machine, because of a dill/pickle incompatibility on 3.14.
+#
+# Install with: pip install -r requirements.txt
+
+# --- 01_CONTENT ---
+# Markdown-only content (story bible, scripts, character sheets). No Python deps.
+
+# --- 02_STORY_ENGINE ---
+pydantic>=2.7
+langgraph>=0.2
+anthropic>=0.34
+openai>=1.40
+jinja2>=3.1
+# LocalTransformersProvider: free open-weight LLM, no API key
+transformers>=4.44
+torch>=2.3
+accelerate>=0.33
+
+# --- 03_STRUCTURED_DATA ---
+pydantic>=2.0
+
+# --- 04_DATASET ---
+# Requires Python <=3.13 (see README known-limitations section).
+datasets>=2.19
+pillow>=10.0
+pydantic>=2.0
+
+# --- 05_TRAINING/character_lora, 05_TRAINING/style_lora ---
+# Requires Python <=3.13 (pulls in `datasets`).
+torch>=2.2
+diffusers>=0.28
+transformers>=4.43
+peft>=0.11
+accelerate>=0.30
+datasets>=2.19
+
+# --- 05_TRAINING/llm ---
+# Requires Python <=3.13 (pulls in `datasets`).
+trl>=0.9
+
+# --- 06_MODELS ---
+pydantic>=2.0
+
+# --- 07_GENERATION (shared) ---
+pydantic>=2.0
+pillow>=10.0
+
+# --- 07_GENERATION/audio, 07_GENERATION/lipsync, 07_GENERATION/video, 07_GENERATION/voice ---
+requests>=2.31
+
+# --- 07_GENERATION/audio (BarkLocalTTSProvider, WhisperLocalASRProvider): free, no API key ---
+transformers>=4.44
+torch>=2.3
+scipy>=1.11
+
+# --- 07_GENERATION/audio, 07_GENERATION/voice (CoquiXTTS local providers) ---
+# Free to run but the XTTS-v2 weights ship under a non-commercial license -- see docstrings.
+coqui-tts>=0.24
+
+# --- 07_GENERATION/video (MochiLocalVideoProvider): free (Apache-2.0), no API key, needs a big GPU ---
+diffusers>=0.31
+
+# --- 07_GENERATION/image ---
+torch>=2.2
+diffusers>=0.28
+transformers>=4.43
+pillow>=10.0
+
+# --- 08_QC ---
+transformers>=4.40
+torch>=2.1
+Pillow>=10.0
+opencv-python>=4.8
+numpy>=1.24
+pydub>=0.25
+pydantic>=2.0
+
+# --- 09_POST ---
+# All 09_POST modules (editing/subtitle/music/sfx/rendering) shell out to the ffmpeg
+# and ffprobe binaries via subprocess and have no third-party Python dependencies.
+# System requirement: ffmpeg (with libx264, aac, libass/subtitles filter) on PATH.
+
+# --- 10_EPISODES ---
+pydantic>=2.6,<3
+
+# --- 11_PUBLISH ---
+pydantic>=2.6,<3
+requests>=2.31
+PyYAML>=6.0
+google-api-python-client>=2.100
+google-auth>=2.23
+google-auth-oauthlib>=1.1
+
+# --- 12_ANALYTICS ---
+pandas>=2.2
+scipy>=1.11
+
+# --- 13_INFRA ---
+fastapi>=0.110
+uvicorn[standard]>=0.29
+sqlalchemy>=2.0
+alembic>=1.13
+pydantic>=2.0
+celery>=5.3
+redis>=5.0
+boto3>=1.34
+psycopg2-binary>=2.9
+
+# 13_INFRA test/demo-only, not needed in production
+httpx>=0.27
+pytest>=8.0
+fakeredis>=2.20

@@ -1,0 +1,5 @@
+transformers>=4.44
+torch
+gradio>=6.0
+sentencepiece
+sacremoses

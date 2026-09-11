@@ -1,0 +1,9 @@
+# 纯 Hugging Face 底层：只用 transformers 的 AutoTokenizer/AutoModel(不用 pipeline / sentence-transformers)
+transformers>=4.40
+torch>=2.2
+numpy>=1.26
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+pydantic-settings>=2.2
+# 首次调用会下载嵌入模型(默认 all-MiniLM-L6-v2 ~90MB)；重排模型 bge-reranker-base 仅在开启重排时下载

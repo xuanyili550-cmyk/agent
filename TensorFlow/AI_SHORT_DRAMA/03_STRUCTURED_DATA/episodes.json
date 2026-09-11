@@ -1,0 +1,28 @@
+{
+  "episodes": [
+    {
+      "id": "ep_001",
+      "episode_number": 1,
+      "season_id": "season_001",
+      "title": "重生夜",
+      "synopsis": "苏晚晚在订婚宴会上被继妹与未婚夫联手构陷坠楼惨死，灵魂重生回到三年前同一个夜晚，她提前抵达宴会厅，却意外撞见了陆景琛，说漏了一句不该说的话。",
+      "hook": "开场3秒：苏晚晚浑身是血从订婚宴会厅台阶跌落，眼睁睁看着陈皓与苏梦瑶在众人面前联手羞辱她致死——画面骤然倒转，她在三年前同一晚睁开双眼。",
+      "cliffhanger": "陆景琛忽然出现在她面前，眼神骤冷：'苏小姐，你我素不相识，你刚刚说的那句——我杀了你——是什么意思？'",
+      "duration_seconds": 420,
+      "scene_ids": [
+        "scene_001",
+        "scene_002",
+        "scene_003",
+        "scene_004"
+      ],
+      "characters_featured": [
+        "char_su_wanwan",
+        "char_lu_jingchen",
+        "char_su_mengyao",
+        "char_chen_hao",
+        "char_wang_lifen"
+      ],
+      "emotional_arc": "绝望死亡 → 震惊重生 → 警惕试探 → 悬念对峙"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+requests>=2.31
+# BarkLocalTTSProvider / WhisperLocalASRProvider: free, no API key
+transformers>=4.44
+torch>=2.3
+scipy>=1.11
+# CoquiXTTSLocalTTSProvider: free but non-commercial license (see docstring)
+coqui-tts>=0.24

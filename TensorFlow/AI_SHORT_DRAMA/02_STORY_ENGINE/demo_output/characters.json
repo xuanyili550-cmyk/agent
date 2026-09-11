@@ -1,0 +1,79 @@
+{
+  "characters": [
+    {
+      "id": "char_su_wanwan",
+      "name": "苏晚晚",
+      "aliases": [],
+      "role": "protagonist",
+      "gender": "female",
+      "age": 26,
+      "occupation": "苏氏集团原设计总监",
+      "appearance": "鹅蛋脸，眼神冷静锐利",
+      "personality_traits": [
+        "表面温顺",
+        "内心坚韧"
+      ],
+      "backstory": "重生前被继妹与未婚夫联手构陷致死。",
+      "motivation": "阻止悲剧重演，揪出所有幕后黑手",
+      "relationships": [
+        {
+          "character_id": "char_su_mengyao",
+          "relation_type": "rival",
+          "description": "继妹，最大威胁"
+        }
+      ],
+      "arc_summary": "",
+      "voice_style": ""
+    },
+    {
+      "id": "char_lu_jingchen",
+      "name": "陆景琛",
+      "aliases": [],
+      "role": "deuteragonist",
+      "gender": "male",
+      "age": 31,
+      "occupation": "修远集团总裁",
+      "appearance": "身形挺拔，气场冷峻",
+      "personality_traits": [
+        "城府深",
+        "外冷内热"
+      ],
+      "backstory": "白手起家的商业强者，厌恶背叛与算计。",
+      "motivation": "被苏晚晚的坚韧打动，决定助她复仇",
+      "relationships": [
+        {
+          "character_id": "char_su_wanwan",
+          "relation_type": "ally",
+          "description": "从合作到心动"
+        }
+      ],
+      "arc_summary": "",
+      "voice_style": ""
+    },
+    {
+      "id": "char_su_mengyao",
+      "name": "苏梦瑶",
+      "aliases": [],
+      "role": "antagonist",
+      "gender": "female",
+      "age": 24,
+      "occupation": "苏氏集团市场部经理",
+      "appearance": "甜美精致，笑容恰到好处地无辜",
+      "personality_traits": [
+        "嫉妒心强",
+        "擅长伪装"
+      ],
+      "backstory": "自幼觊觎苏晚晚的一切，联合他人策划构陷。",
+      "motivation": "彻底取代苏晚晚，独占苏氏集团继承权",
+      "relationships": [
+        {
+          "character_id": "char_su_wanwan",
+          "relation_type": "rival",
+          "description": "表面姐妹实为对手"
+        }
+      ],
+      "arc_summary": "",
+      "voice_style": ""
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+pydantic-settings>=2.2
+# 生产后端可选:openai(调 vLLM/云) / mlx-lm(本机)

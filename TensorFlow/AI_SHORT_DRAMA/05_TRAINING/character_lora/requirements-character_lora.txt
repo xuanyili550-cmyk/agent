@@ -1,0 +1,6 @@
+torch>=2.2
+diffusers>=0.28
+transformers>=4.43
+peft>=0.11
+accelerate>=0.30
+datasets>=2.19

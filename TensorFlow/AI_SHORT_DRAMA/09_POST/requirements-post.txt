@@ -1,0 +1,3 @@
+# All 09_POST modules (editing/subtitle/music/sfx/rendering) shell out to the ffmpeg
+# and ffprobe binaries via subprocess and have no third-party Python dependencies.
+# System requirement: ffmpeg (with libx264, aac, libass/subtitles filter) on PATH.

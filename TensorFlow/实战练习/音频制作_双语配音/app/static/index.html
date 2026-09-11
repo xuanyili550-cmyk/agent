@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>双语配音 · 音频/视频制作</title>
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">🎙️</span> 双语配音 <small>中英 · 音标 · 视频</small></div>
+  <button id="themeBtn" class="ghost" title="切换主题">🌙</button>
+</header>
+
+<main class="wrap">
+  <section class="panel input-panel">
+    <div class="row between">
+      <div class="modes" role="tablist">
+        <button class="mode active" data-mode="passage">课文朗读</button>
+        <button class="mode" data-mode="cards">单词卡</button>
+        <button class="mode" data-mode="free">自由文本</button>
+      </div>
+      <div class="samples">
+        <button class="chip" data-sample="passage">示例·课文</button>
+        <button class="chip" data-sample="cards">示例·单词</button>
+      </div>
+    </div>
+    <textarea id="text" placeholder="输入中英混排文本，如：Hello 你好，welcome to my class。&#10;单词卡模式：每行一个词，如 apple / banana / computer"></textarea>
+    <div class="row between">
+      <div class="hint" id="hint">支持中英混排；英文自动标 IPA 音标。</div>
+      <div class="actions">
+        <button id="analyzeBtn" class="primary">分析</button>
+        <button id="playAllBtn" class="accent" disabled>▶ 播放全部</button>
+        <button id="stopBtn" class="ghost" disabled>■ 停止</button>
+        <button id="exportBtn" class="ghost" disabled>🎬 导出 MP4</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="stage" class="panel stage hidden">
+    <div class="stats" id="stats"></div>
+    <div id="render" class="render"></div>
+  </section>
+
+  <section id="exportPanel" class="panel export hidden">
+    <div class="row between">
+      <strong>视频导出</strong><span id="exportStatus" class="muted">准备中…</span>
+    </div>
+    <div class="progress"><div id="progressBar" class="bar"></div></div>
+    <video id="preview" class="preview hidden" controls></video>
+    <a id="downloadLink" class="primary hidden" download>⬇ 下载 MP4</a>
+  </section>
+</main>
+
+<div id="toast" class="toast"></div>
+<audio id="player"></audio>
+<script src="/static/app.js"></script>
+</body>
+</html>

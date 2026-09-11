@@ -1,0 +1,9 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+pydantic-settings>=2.2
+numpy>=1.26
+# 生产可选(按后端启用):transformers+torch(嵌入/LLM)、PyMuPDF(PDF解析)、faiss-cpu(大规模向量)
+# transformers>=4.40
+# torch>=2.2
+# PyMuPDF>=1.23

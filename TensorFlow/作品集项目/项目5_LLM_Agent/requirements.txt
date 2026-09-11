@@ -1,0 +1,5 @@
+# 本地(Mac Apple Silicon)：mlx-lm 当大脑。上云换 vLLM/InferenceClient + smolagents(见 README)。
+transformers>=4.44
+torch
+gradio>=6.0
+mlx-lm ; platform_machine == "arm64" and sys_platform == "darwin"

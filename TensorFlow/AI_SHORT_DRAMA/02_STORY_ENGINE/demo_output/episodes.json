@@ -1,0 +1,21 @@
+{
+  "episodes": [
+    {
+      "id": "ep_001",
+      "episode_number": 1,
+      "season_id": "season_001",
+      "title": "重生夜",
+      "synopsis": "苏晚晚重生回到订婚宴当晚，提前抵达现场试探对手，却意外撞见陆景琛。",
+      "hook": "开场3秒：苏晚晚浑身是血跌落订婚宴会厅台阶，画面骤然倒转回三年前同一晚。",
+      "cliffhanger": "陆景琛忽然逼近质问：'你刚刚说的——我杀了你——是什么意思？'",
+      "duration_seconds": 300,
+      "scene_ids": [],
+      "characters_featured": [
+        "char_su_wanwan",
+        "char_lu_jingchen",
+        "char_su_mengyao"
+      ],
+      "emotional_arc": "绝望死亡 → 震惊重生 → 警惕试探 → 悬念对峙"
+    }
+  ]
+}

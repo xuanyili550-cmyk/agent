@@ -1,0 +1,92 @@
+{
+  "scenes": [
+    {
+      "id": "scene_001_01",
+      "episode_id": "ep_001",
+      "scene_number": 1,
+      "location_id": "loc_engagement_hall",
+      "time_of_day": "night",
+      "int_ext": "int",
+      "description": "苏晚晚重生后提前抵达订婚宴会厅，与苏梦瑶针锋相对，气氛骤然紧张。",
+      "characters_present": [
+        "char_su_wanwan",
+        "char_su_mengyao"
+      ],
+      "emotional_tone": "紧张对峙、暗流涌动",
+      "shot_ids": [
+        "shot_001_01_01",
+        "shot_001_01_02"
+      ],
+      "dialogue": [
+        {
+          "id": "dlg_shot_001_01_01",
+          "shot_id": "shot_001_01_01",
+          "character_id": "char_su_wanwan",
+          "character_name": "苏晚晚",
+          "order": 1,
+          "line_zh": "这一次，我不会再心软。",
+          "line_en": "This time, I won't hold back.",
+          "emotion": "determination",
+          "voice_direction": "",
+          "subtitle_style": ""
+        },
+        {
+          "id": "dlg_shot_001_01_02",
+          "shot_id": "shot_001_01_02",
+          "character_id": "char_su_mengyao",
+          "character_name": "苏梦瑶",
+          "order": 2,
+          "line_zh": "你以为你还能像上辈子一样赢吗？",
+          "line_en": "Do you think you can win like last time?",
+          "emotion": "contempt",
+          "voice_direction": "",
+          "subtitle_style": ""
+        }
+      ]
+    },
+    {
+      "id": "scene_001_02",
+      "episode_id": "ep_001",
+      "scene_number": 2,
+      "location_id": "loc_su_mansion",
+      "time_of_day": "morning",
+      "int_ext": "int",
+      "description": "苏晚晚在公馆确认自己重生的事实，陆景琛的名字突然浮现在她脑海中，成为她计划的关键变量。",
+      "characters_present": [
+        "char_su_wanwan",
+        "char_lu_jingchen"
+      ],
+      "emotional_tone": "震惊、逐渐冷静的决绝",
+      "shot_ids": [
+        "shot_001_02_01",
+        "shot_001_02_02"
+      ],
+      "dialogue": [
+        {
+          "id": "dlg_shot_001_02_01",
+          "shot_id": "shot_001_02_01",
+          "character_id": "char_su_wanwan",
+          "character_name": "苏晚晚",
+          "order": 1,
+          "line_zh": "这一次，我不会再心软。",
+          "line_en": "This time, I won't hold back.",
+          "emotion": "determination",
+          "voice_direction": "",
+          "subtitle_style": ""
+        },
+        {
+          "id": "dlg_shot_001_02_02",
+          "shot_id": "shot_001_02_02",
+          "character_id": "char_lu_jingchen",
+          "character_name": "陆景琛",
+          "order": 2,
+          "line_zh": "你以为你还能像上辈子一样赢吗？",
+          "line_en": "Do you think you can win like last time?",
+          "emotion": "contempt",
+          "voice_direction": "",
+          "subtitle_style": ""
+        }
+      ]
+    }
+  ]
+}

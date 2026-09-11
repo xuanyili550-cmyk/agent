@@ -1,0 +1,2 @@
+{"voice_id":"voice_lin_wei_001","character_id":"char_lin_wei","audio_path":"voices/char_lin_wei/line_001.wav","transcript":"今晚这场雨,好像一直下不完。","speaker":"char_lin_wei","duration_sec":3.2,"sample_rate":24000,"source":"synthetic-placeholder","license":"CC0-synthetic-placeholder","split":"train"}
+{"voice_id":"voice_su_yan_001","character_id":"char_su_yan","audio_path":"voices/char_su_yan/line_001.wav","transcript":"这件事,从头到尾都不是巧合。","speaker":"char_su_yan","duration_sec":2.8,"sample_rate":24000,"source":"synthetic-placeholder","license":"CC0-synthetic-placeholder","split":"train"}

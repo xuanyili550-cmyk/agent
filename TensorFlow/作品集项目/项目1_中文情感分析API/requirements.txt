@@ -1,0 +1,7 @@
+transformers>=4.44
+torch
+gradio>=6.0
+fastapi
+uvicorn
+pydantic>=2
+sentencepiece

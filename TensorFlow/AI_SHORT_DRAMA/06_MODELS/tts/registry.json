@@ -1,0 +1,42 @@
+[
+  {
+    "name": "SpeechT5 TTS",
+    "type": "tts",
+    "source": "huggingface",
+    "license": "MIT",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "microsoft/speecht5_tts",
+    "version": "1.0",
+    "notes": "MIT license, commercial use allowed. Voice quality/expressiveness is more limited than newer TTS models -- adequate for a smoke-test pipeline, evaluate separately for production voice quality."
+  },
+  {
+    "name": "Coqui XTTS-v2",
+    "type": "tts",
+    "source": "huggingface",
+    "license": "Coqui Public Model License 1.0.0",
+    "commercial_use_allowed": false,
+    "hf_id_or_local_path": "coqui/XTTS-v2",
+    "version": "2.0",
+    "notes": "CPML is non-commercial by default and historically required a separate commercial agreement with Coqui (the company has since shut down, so the practical path to a commercial license is unclear). Do not use in a commercial pipeline without self-verifying current licensing status. Separately, verified 2026-09-10: the actively-maintained `coqui-tts` PyPI package (0.27.5) fails to import against this project's `transformers` 5.5.0 (`ImportError: cannot import name 'isin_mps_friendly' from transformers.pytorch_utils`) -- needs an older, separately-pinned transformers version to actually run; see 07_GENERATION/audio/tts_generator.py::CoquiXTTSLocalTTSProvider docstring."
+  },
+  {
+    "name": "Bark",
+    "type": "tts",
+    "source": "huggingface",
+    "license": "MIT",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "suno/bark",
+    "version": "1.0",
+    "notes": "MIT, commercial use allowed. Used by 07_GENERATION/audio/tts_generator.py's BarkLocalTTSProvider -- no API key, no cloning needed, ships with a fixed set of preset speaker voices (not your own cloned voice)."
+  },
+  {
+    "name": "Bark-small",
+    "type": "tts",
+    "source": "huggingface",
+    "license": "MIT",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "suno/bark-small",
+    "version": "1.0",
+    "notes": "MIT, commercial use allowed. Smaller/faster than full Bark at some quality cost; this is the default model_id in BarkLocalTTSProvider."
+  }
+]

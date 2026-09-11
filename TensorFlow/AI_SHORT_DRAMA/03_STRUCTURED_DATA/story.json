@@ -1,0 +1,129 @@
+{
+  "story_bible": {
+    "id": "story_001",
+    "title": "重生之豪门逆袭",
+    "logline": "豪门千金苏晚晚被继母与未婚夫联手构陷、含冤惨死，一朝重生回到三年前订婚夜，这一次她要让所有伤害过她的人血债血偿。",
+    "genre": [
+      "rebirth",
+      "revenge",
+      "ceo_drama"
+    ],
+    "themes": [
+      "复仇",
+      "重生",
+      "豪门权斗",
+      "逆风翻盘"
+    ],
+    "tone": "紧张、强爽感、多重反转",
+    "target_audience": "18-35岁女性，短剧竖屏平台用户",
+    "main_conflict": "苏晚晚与继母王丽芬、继妹苏梦瑶、前未婚夫陈皓之间的构陷与复仇对抗",
+    "unique_selling_point": "开局即高能死亡重生+豪门商战+双强携手复仇，每集三秒强钩子、结尾强悬念",
+    "episode_count_planned": 12,
+    "world": {
+      "id": "world_001",
+      "name": "临江市豪门圈",
+      "description": "虚构现代都市临江市，以修远集团、苏氏集团为首的多家家族企业盘踞其中，联姻、股权与舆论是权力更迭的三大战场。",
+      "time_period": "架空现代都市",
+      "locations": [
+        {
+          "id": "loc_engagement_hall",
+          "name": "临江洲际酒店订婚宴会厅",
+          "description": "全市顶级豪门举办婚庆与商务酒会的地标场地，水晶吊灯与落地窗环绕",
+          "mood": "奢华、压迫、众目睽睽"
+        },
+        {
+          "id": "loc_su_mansion",
+          "name": "苏氏公馆",
+          "description": "苏晚晚从小长大的老宅，欧式庭院配中式回廊",
+          "mood": "表面温情、暗流涌动"
+        },
+        {
+          "id": "loc_xingyuan_tower",
+          "name": "修远集团总部大厦",
+          "description": "陆景琛的商业帝国总部，顶层为其私人办公室",
+          "mood": "冷峻、权力感"
+        },
+        {
+          "id": "loc_hall_balcony",
+          "name": "宴会厅露台",
+          "description": "宴会厅外的露台，可俯瞰临江夜景",
+          "mood": "私密、紧张对峙"
+        }
+      ],
+      "organizations": [
+        "修远集团",
+        "苏氏集团",
+        "陈氏地产"
+      ],
+      "social_rules": [
+        "豪门联姻是维系家族利益的常见手段",
+        "舆论与股权投票权同样能左右一个人的命运"
+      ],
+      "tone": "都市精英、冷峻、强反转"
+    },
+    "character_ids": [
+      "char_su_wanwan",
+      "char_lu_jingchen",
+      "char_su_mengyao",
+      "char_chen_hao",
+      "char_wang_lifen",
+      "char_lin_xi"
+    ]
+  },
+  "season_arcs": [
+    {
+      "id": "season_001",
+      "season_number": 1,
+      "title": "血债血偿",
+      "synopsis": "苏晚晚重生回到订婚夜前夕，携手修远集团总裁陆景琛，从舆论、股权、亲情三条战线逐步瓦解继母与继妹的构陷网络，最终夺回苏氏集团并揭穿三年前的真相。",
+      "central_question": "苏晚晚能否在重蹈覆辙之前识破所有构陷，并让加害者付出代价？",
+      "resolution": "苏晚晚联合陆景琛揭穿王丽芬与陈皓伪造遗嘱、构陷杀人的证据，夺回苏氏集团控制权，苏梦瑶与陈皓身败名裂。",
+      "beats": [
+        {
+          "act": "第一幕：重生与结盟",
+          "description": "苏晚晚重生并与陆景琛因误会结识，识破当晚的第一场构陷",
+          "episode_ids": [
+            "ep_001",
+            "ep_002",
+            "ep_003"
+          ]
+        },
+        {
+          "act": "第二幕：商战反击",
+          "description": "双方在股权与舆论战场多次交手，苏晚晚步步夺回话语权",
+          "episode_ids": [
+            "ep_004",
+            "ep_005",
+            "ep_006",
+            "ep_007",
+            "ep_008"
+          ]
+        },
+        {
+          "act": "第三幕：真相与清算",
+          "description": "尘封的死亡真相浮出水面，苏晚晚完成复仇并与陆景琛确认心意",
+          "episode_ids": [
+            "ep_009",
+            "ep_010",
+            "ep_011",
+            "ep_012"
+          ]
+        }
+      ],
+      "episode_ids": [
+        "ep_001",
+        "ep_002",
+        "ep_003",
+        "ep_004",
+        "ep_005",
+        "ep_006",
+        "ep_007",
+        "ep_008",
+        "ep_009",
+        "ep_010",
+        "ep_011",
+        "ep_012"
+      ]
+    }
+  ]
+}

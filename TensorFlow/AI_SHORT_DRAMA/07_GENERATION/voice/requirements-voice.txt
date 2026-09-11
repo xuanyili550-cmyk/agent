@@ -1,0 +1,3 @@
+requests>=2.31
+# CoquiXTTSLocalVoiceCloneProvider: free but non-commercial license (see docstring)
+coqui-tts>=0.24

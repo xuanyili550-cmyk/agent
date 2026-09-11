@@ -1,0 +1,4 @@
+torch>=2.2
+diffusers>=0.28
+transformers>=4.43
+pillow>=10.0

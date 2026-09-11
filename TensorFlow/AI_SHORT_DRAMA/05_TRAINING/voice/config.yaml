@@ -1,0 +1,22 @@
+# Template config for TTS/voice-cloning model fine-tuning (e.g. a SpeechT5 /
+# XTTS-style backbone). No training script is implemented in this directory
+# yet -- see README.md.
+
+model:
+  pretrained_model_name_or_path: microsoft/speecht5_tts
+  sample_rate: 16000
+  mixed_precision: fp16
+
+dataset:
+  manifest_path: ../../04_DATASET/metadata/voice_manifest.jsonl
+  loader_function: build_voice_dataset  # see 04_DATASET/dataset_loaders.py
+
+training:
+  train_batch_size: 4
+  gradient_accumulation_steps: 2
+  learning_rate: 1.0e-5
+  max_train_steps: 2000
+  seed: 42
+
+output:
+  output_dir: ./out/voice-run1

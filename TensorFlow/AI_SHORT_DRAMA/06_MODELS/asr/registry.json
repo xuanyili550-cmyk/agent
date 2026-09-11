@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Whisper large-v3",
+    "type": "asr",
+    "source": "huggingface",
+    "license": "Apache-2.0",
+    "commercial_use_allowed": true,
+    "hf_id_or_local_path": "openai/whisper-large-v3",
+    "version": "large-v3",
+    "notes": "Hugging Face lists this checkpoint under Apache-2.0. Note the original openai/whisper GitHub repo is MIT-licensed -- the two licenses are both permissive but not identical text, self-verify which applies to your usage (weights vs. code)."
+  }
+]
