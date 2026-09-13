@@ -1,0 +1,169 @@
+{
+  "context_id": "drama_demo_story_001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "故事创意：豪门千金重生复仇，携手冷峻总裁夺回家族企业\n\n请基于以上创意生成一部竖屏短剧的完整 Story Bible，包含 world（世界观设定，含至少 2 个 location）、genre、themes、tone、target_audience、main_conflict、unique_selling_point、episode_count_planned、character_ids。\n\n[TARGET_SCHEMA=StoryBible]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- Genre: revenge, rebirth, romance, ceo_drama, family_drama, fantasy, suspense"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"story_001\",\"title\":\"重生之豪门逆袭\",\"logline\":\"豪门千金苏晚晚被继妹与未婚夫联手构陷惨死，重生回到三年前订婚夜展开复仇。\",\"genre\":[\"rebirth\",\"revenge\",\"ceo_drama\"],\"themes\":[\"复仇\",\"重生\",\"豪门权斗\"],\"tone\":\"紧张、强爽感、多重反转\",\"target_audience\":\"18-35岁女性，短剧竖屏平台用户\",\"main_conflict\":\"苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗\",\"unique_selling_point\":\"开局即高能死亡重生+豪门商战+双强携手复仇\",\"episode_count_planned\":12,\"world\":{\"id\":\"world_001\",\"name\":\"临江市豪门圈\",\"description\":\"虚构现代都市临江市，以修远集团、苏氏集团为首的多家家族企业盘踞其中。\",\"time_period\":\"架空现代都市\",\"locations\":[{\"id\":\"loc_engagement_hall\",\"name\":\"临江洲际酒店订婚宴会厅\",\"description\":\"豪门酒会地标\",\"mood\":\"奢华、压迫\"},{\"id\":\"loc_su_mansion\",\"name\":\"苏氏公馆\",\"description\":\"苏晚晚从小长大的老宅\",\"mood\":\"表面温情、暗流涌动\"}],\"organizations\":[\"修远集团\",\"苏氏集团\"],\"social_rules\":[\"豪门联姻是维系家族利益的常见手段\"],\"tone\":\"都市精英、冷峻、强反转\"},\"character_ids\":[\"char_su_wanwan\",\"char_lu_jingchen\",\"char_su_mengyao\"]}"
+    },
+    {
+      "role": "user",
+      "content": "故事标题：重生之豪门逆袭\n主线冲突：苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗\n世界观：虚构现代都市临江市，以修远集团、苏氏集团为首的多家家族企业盘踞其中。\n\n请为这部短剧生成一个角色，角色定位提示：女主角，重生复仇者。需要包含完整的 appearance、personality_traits、backstory、motivation、relationships（至少 1 条）。\n\n[TARGET_SCHEMA=Character]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- CharacterRole: protagonist, deuteragonist, antagonist, supporting, minor\n- Gender: female, male, other\n- RelationType: family, romantic, rival, ally, enemy, employer, employee, friend"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"char_su_wanwan\",\"name\":\"苏晚晚\",\"aliases\":[],\"role\":\"protagonist\",\"gender\":\"female\",\"age\":26,\"occupation\":\"苏氏集团原设计总监\",\"appearance\":\"鹅蛋脸，眼神冷静锐利\",\"personality_traits\":[\"表面温顺\",\"内心坚韧\"],\"backstory\":\"重生前被继妹与未婚夫联手构陷致死。\",\"motivation\":\"阻止悲剧重演，揪出所有幕后黑手\",\"relationships\":[{\"character_id\":\"char_su_mengyao\",\"relation_type\":\"rival\",\"description\":\"继妹，最大威胁\"}],\"arc_summary\":\"\",\"voice_style\":\"\"}"
+    },
+    {
+      "role": "user",
+      "content": "故事标题：重生之豪门逆袭\n主线冲突：苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗\n世界观：虚构现代都市临江市，以修远集团、苏氏集团为首的多家家族企业盘踞其中。\n\n请为这部短剧生成一个角色，角色定位提示：男主角，冷峻总裁，后期成为女主盟友。需要包含完整的 appearance、personality_traits、backstory、motivation、relationships（至少 1 条）。\n\n[TARGET_SCHEMA=Character]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- CharacterRole: protagonist, deuteragonist, antagonist, supporting, minor\n- Gender: female, male, other\n- RelationType: family, romantic, rival, ally, enemy, employer, employee, friend"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"char_lu_jingchen\",\"name\":\"陆景琛\",\"aliases\":[],\"role\":\"deuteragonist\",\"gender\":\"male\",\"age\":31,\"occupation\":\"修远集团总裁\",\"appearance\":\"身形挺拔，气场冷峻\",\"personality_traits\":[\"城府深\",\"外冷内热\"],\"backstory\":\"白手起家的商业强者，厌恶背叛与算计。\",\"motivation\":\"被苏晚晚的坚韧打动，决定助她复仇\",\"relationships\":[{\"character_id\":\"char_su_wanwan\",\"relation_type\":\"ally\",\"description\":\"从合作到心动\"}],\"arc_summary\":\"\",\"voice_style\":\"\"}"
+    },
+    {
+      "role": "user",
+      "content": "故事标题：重生之豪门逆袭\n主线冲突：苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗\n世界观：虚构现代都市临江市，以修远集团、苏氏集团为首的多家家族企业盘踞其中。\n\n请为这部短剧生成一个角色，角色定位提示：反派，女主的继妹，表面无辜实则心机深重。需要包含完整的 appearance、personality_traits、backstory、motivation、relationships（至少 1 条）。\n\n[TARGET_SCHEMA=Character]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- CharacterRole: protagonist, deuteragonist, antagonist, supporting, minor\n- Gender: female, male, other\n- RelationType: family, romantic, rival, ally, enemy, employer, employee, friend"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"char_su_mengyao\",\"name\":\"苏梦瑶\",\"aliases\":[],\"role\":\"antagonist\",\"gender\":\"female\",\"age\":24,\"occupation\":\"苏氏集团市场部经理\",\"appearance\":\"甜美精致，笑容恰到好处地无辜\",\"personality_traits\":[\"嫉妒心强\",\"擅长伪装\"],\"backstory\":\"自幼觊觎苏晚晚的一切，联合他人策划构陷。\",\"motivation\":\"彻底取代苏晚晚，独占苏氏集团继承权\",\"relationships\":[{\"character_id\":\"char_su_wanwan\",\"relation_type\":\"rival\",\"description\":\"表面姐妹实为对手\"}],\"arc_summary\":\"\",\"voice_style\":\"\"}"
+    },
+    {
+      "role": "user",
+      "content": "季线标题：重生之豪门逆袭·第1季\n季线核心问题：主角能否在「苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗」中逆转局势？\n当前所属幕：第一幕：重生/开局与建立强钩子 —— 第一幕：重生/开局与建立强钩子：推进「苏晚晚与继母、继妹、前未婚夫之间的构陷与复仇对抗」这一核心矛盾\n这是第 1 集，season_id 为 'season_001'，id 请使用 'ep_001'。\n时长约束：duration_seconds 必须在 300 秒左右。\n强制约束：hook 字段必须描述开场 3 秒内建立的强钩子（冲突/反转/悬疑画面），cliffhanger 字段必须描述结尾的强悬念，两者都不能为空。\n\n[TARGET_SCHEMA=Episode]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"ep_001\",\"episode_number\":1,\"season_id\":\"season_001\",\"title\":\"重生夜\",\"synopsis\":\"苏晚晚重生回到订婚宴当晚，提前抵达现场试探对手，却意外撞见陆景琛。\",\"hook\":\"开场3秒：苏晚晚浑身是血跌落订婚宴会厅台阶，画面骤然倒转回三年前同一晚。\",\"cliffhanger\":\"陆景琛忽然逼近质问：'你刚刚说的——我杀了你——是什么意思？'\",\"duration_seconds\":300,\"scene_ids\":[],\"characters_featured\":[\"char_su_wanwan\",\"char_lu_jingchen\",\"char_su_mengyao\"],\"emotional_arc\":\"绝望死亡 → 震惊重生 → 警惕试探 → 悬念对峙\"}"
+    },
+    {
+      "role": "user",
+      "content": "集标题：重生夜\n本集梗概：苏晚晚重生回到订婚宴当晚，提前抵达现场试探对手，却意外撞见陆景琛。\n开场钩子：开场3秒：苏晚晚浑身是血跌落订婚宴会厅台阶，画面骤然倒转回三年前同一晚。\n结尾悬念：陆景琛忽然逼近质问：'你刚刚说的——我杀了你——是什么意思？'\n出场角色：苏晚晚、陆景琛、苏梦瑶\n\n请为 episode_id='ep_001' 生成完整剧本文本（content 字段为带场景标题、动作描述、台词的完整剧本正文，语言为中文），id 使用 'script_' 加集号。\n\n[TARGET_SCHEMA=Script]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"script_ep_001\",\"episode_id\":\"ep_001\",\"title\":\"重生夜\",\"language\":\"zh\",\"content\":\"【场景一：临江洲际酒店订婚宴会厅 · 夜】\\n苏晚晚提前抵达空旷的宴会厅，与前来试探的苏梦瑶针锋相对。\\n苏梦瑶：姐姐今天怎么来得这么早？\\n苏晚晚：总要提前看清楚，谁在这场宴会里笑里藏刀。\\n\\n【场景二：苏氏公馆卧室 · 晨】\\n苏晚晚确认自己回到了三年前，脑海中浮现出陆景琛这个关键人物。\\n苏晚晚（自语）：这一次，我不会再让你们轻易得逞。\",\"scene_ids\":[],\"version\":1}"
+    },
+    {
+      "role": "user",
+      "content": "剧本内容：【场景一：临江洲际酒店订婚宴会厅 · 夜】\n苏晚晚提前抵达空旷的宴会厅，与前来试探的苏梦瑶针锋相对。\n苏梦瑶：姐姐今天怎么来得这么早？\n苏晚晚：总要提前看清楚，谁在这场宴会里笑里藏刀。\n\n【场景二：苏氏公馆卧室 · 晨】\n苏晚晚确认自己回到了三年前，脑海中浮现出陆景琛这个关键人物。\n苏晚晚（自语）：这一次，我不会再让你们轻易得逞。\n\n请为 episode_id='ep_001' 生成第 1 场（scene_number=1）的分场信息，id 使用 'scene_001_01'。shot_ids 和 dialogue 先留空列表，后续会单独生成分镜与对白。\n\n[TARGET_SCHEMA=Scene]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- Emotion: anger, sadness, joy, fear, surprise, contempt, despair, determination, calm, anxiety, vengeful, triumph, love, shock\n- IntExt: int, ext, int_ext\n- TimeOfDay: dawn, morning, noon, afternoon, dusk, night, late_night"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"scene_001_01\",\"episode_id\":\"ep_001\",\"scene_number\":1,\"location_id\":\"loc_engagement_hall\",\"time_of_day\":\"night\",\"int_ext\":\"int\",\"description\":\"苏晚晚重生后提前抵达订婚宴会厅，与苏梦瑶针锋相对，气氛骤然紧张。\",\"characters_present\":[\"char_su_wanwan\",\"char_su_mengyao\"],\"emotional_tone\":\"紧张对峙、暗流涌动\",\"shot_ids\":[],\"dialogue\":[]}"
+    },
+    {
+      "role": "user",
+      "content": "场次描述：苏晚晚重生后提前抵达订婚宴会厅，与苏梦瑶针锋相对，气氛骤然紧张。\n出场角色：char_su_wanwan、char_su_mengyao\n请为 scene_id='scene_001_01'（episode=1, scene=1）生成 2-4 个分镜镜头，每个镜头必须包含 episode/scene/shot/character/location/action/emotion/camera/duration 字段，id 使用 'shot_001_01_XX' 格式，scene_id 字段填 'scene_001_01'。输出必须是 {\"shots\": [...]} 结构。\n\n[TARGET_SCHEMA=ShotsFile]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- CameraAngle: eye_level, low_angle, high_angle, dutch_angle, birds_eye, overhead\n- CameraMovement: static, pan_left, pan_right, tilt_up, tilt_down, dolly_in, dolly_out, tracking, handheld, crane, zoom_in, zoom_out, whip_pan\n- Emotion: anger, sadness, joy, fear, surprise, contempt, despair, determination, calm, anxiety, vengeful, triumph, love, shock\n- ShotSize: extreme_close_up, close_up, medium_close_up, medium_shot, medium_long_shot, long_shot, extreme_long_shot, two_shot, over_the_shoulder, pov, insert"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"shots\":[{\"id\":\"shot_001_01_01\",\"episode\":1,\"scene\":1,\"shot\":1,\"scene_id\":\"scene_001_01\",\"character\":[\"char_su_wanwan\"],\"location\":\"临江洲际酒店订婚宴会厅\",\"action\":\"第1场第1个镜头：紧张对峙、暗流涌动的关键演出\",\"emotion\":\"determination\",\"camera\":{\"shot_size\":\"close_up\",\"angle\":\"eye_level\",\"movement\":\"dolly_in\",\"lens_notes\":\"\"},\"duration\":2.5,\"dialogue_ids\":[],\"notes\":\"\"},{\"id\":\"shot_001_01_02\",\"episode\":1,\"scene\":1,\"shot\":2,\"scene_id\":\"scene_001_01\",\"character\":[\"char_su_wanwan\",\"char_su_mengyao\"],\"location\":\"临江洲际酒店订婚宴会厅\",\"action\":\"第1场第2个镜头：紧张对峙、暗流涌动的关键演出\",\"emotion\":\"shock\",\"camera\":{\"shot_size\":\"medium_shot\",\"angle\":\"eye_level\",\"movement\":\"static\",\"lens_notes\":\"\"},\"duration\":2.5,\"dialogue_ids\":[],\"notes\":\"\"}]}"
+    },
+    {
+      "role": "user",
+      "content": "场次描述：苏晚晚重生后提前抵达订婚宴会厅，与苏梦瑶针锋相对，气氛骤然紧张。\n出场角色 id：char_su_wanwan、char_su_mengyao\n镜头列表：\nshot_001_01_01: 第1场第1个镜头：紧张对峙、暗流涌动的关键演出（角色：char_su_wanwan）\nshot_001_01_02: 第1场第2个镜头：紧张对峙、暗流涌动的关键演出（角色：char_su_wanwan、char_su_mengyao）\n\n请为需要台词的镜头生成对白（DialogueLine），character_id 必须来自出场角色 id 列表，shot_id 必须对应上面某个镜头 id，order 从 1 开始递增，line_zh 为中文台词，line_en 给出对应英文翻译。不是每个镜头都需要台词，只为叙事必要的镜头生成。输出必须是 {\"dialogue\": [...]} 结构。\n\n[TARGET_SCHEMA=DialogueBatch]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- Emotion: anger, sadness, joy, fear, surprise, contempt, despair, determination, calm, anxiety, vengeful, triumph, love, shock"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"dialogue\":[{\"id\":\"dlg_shot_001_01_01\",\"shot_id\":\"shot_001_01_01\",\"character_id\":\"char_su_wanwan\",\"character_name\":\"苏晚晚\",\"order\":1,\"line_zh\":\"这一次，我不会再心软。\",\"line_en\":\"This time, I won't hold back.\",\"emotion\":\"determination\",\"voice_direction\":\"\",\"subtitle_style\":\"\"},{\"id\":\"dlg_shot_001_01_02\",\"shot_id\":\"shot_001_01_02\",\"character_id\":\"char_su_mengyao\",\"character_name\":\"苏梦瑶\",\"order\":2,\"line_zh\":\"你以为你还能像上辈子一样赢吗？\",\"line_en\":\"Do you think you can win like last time?\",\"emotion\":\"contempt\",\"voice_direction\":\"\",\"subtitle_style\":\"\"}]}"
+    },
+    {
+      "role": "user",
+      "content": "剧本内容：【场景一：临江洲际酒店订婚宴会厅 · 夜】\n苏晚晚提前抵达空旷的宴会厅，与前来试探的苏梦瑶针锋相对。\n苏梦瑶：姐姐今天怎么来得这么早？\n苏晚晚：总要提前看清楚，谁在这场宴会里笑里藏刀。\n\n【场景二：苏氏公馆卧室 · 晨】\n苏晚晚确认自己回到了三年前，脑海中浮现出陆景琛这个关键人物。\n苏晚晚（自语）：这一次，我不会再让你们轻易得逞。\n\n请为 episode_id='ep_001' 生成第 2 场（scene_number=2）的分场信息，id 使用 'scene_001_02'。shot_ids 和 dialogue 先留空列表，后续会单独生成分镜与对白。\n\n[TARGET_SCHEMA=Scene]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- Emotion: anger, sadness, joy, fear, surprise, contempt, despair, determination, calm, anxiety, vengeful, triumph, love, shock\n- IntExt: int, ext, int_ext\n- TimeOfDay: dawn, morning, noon, afternoon, dusk, night, late_night"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"scene_001_02\",\"episode_id\":\"ep_001\",\"scene_number\":2,\"location_id\":\"loc_su_mansion\",\"time_of_day\":\"morning\",\"int_ext\":\"int\",\"description\":\"苏晚晚在公馆确认自己重生的事实，陆景琛的名字突然浮现在她脑海中，成为她计划的关键变量。\",\"characters_present\":[\"char_su_wanwan\",\"char_lu_jingchen\"],\"emotional_tone\":\"震惊、逐渐冷静的决绝\",\"shot_ids\":[],\"dialogue\":[]}"
+    },
+    {
+      "role": "user",
+      "content": "场次描述：苏晚晚在公馆确认自己重生的事实，陆景琛的名字突然浮现在她脑海中，成为她计划的关键变量。\n出场角色：char_su_wanwan、char_lu_jingchen\n请为 scene_id='scene_001_02'（episode=1, scene=2）生成 2-4 个分镜镜头，每个镜头必须包含 episode/scene/shot/character/location/action/emotion/camera/duration 字段，id 使用 'shot_001_02_XX' 格式，scene_id 字段填 'scene_001_02'。输出必须是 {\"shots\": [...]} 结构。\n\n[TARGET_SCHEMA=ShotsFile]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- CameraAngle: eye_level, low_angle, high_angle, dutch_angle, birds_eye, overhead\n- CameraMovement: static, pan_left, pan_right, tilt_up, tilt_down, dolly_in, dolly_out, tracking, handheld, crane, zoom_in, zoom_out, whip_pan\n- Emotion: anger, sadness, joy, fear, surprise, contempt, despair, determination, calm, anxiety, vengeful, triumph, love, shock\n- ShotSize: extreme_close_up, close_up, medium_close_up, medium_shot, medium_long_shot, long_shot, extreme_long_shot, two_shot, over_the_shoulder, pov, insert"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"shots\":[{\"id\":\"shot_001_02_01\",\"episode\":1,\"scene\":2,\"shot\":1,\"scene_id\":\"scene_001_02\",\"character\":[\"char_su_wanwan\"],\"location\":\"苏氏公馆卧室\",\"action\":\"第2场第1个镜头：震惊、逐渐冷静的决绝的关键演出\",\"emotion\":\"determination\",\"camera\":{\"shot_size\":\"close_up\",\"angle\":\"eye_level\",\"movement\":\"dolly_in\",\"lens_notes\":\"\"},\"duration\":2.5,\"dialogue_ids\":[],\"notes\":\"\"},{\"id\":\"shot_001_02_02\",\"episode\":1,\"scene\":2,\"shot\":2,\"scene_id\":\"scene_001_02\",\"character\":[\"char_su_wanwan\",\"char_lu_jingchen\"],\"location\":\"苏氏公馆卧室\",\"action\":\"第2场第2个镜头：震惊、逐渐冷静的决绝的关键演出\",\"emotion\":\"shock\",\"camera\":{\"shot_size\":\"medium_shot\",\"angle\":\"eye_level\",\"movement\":\"static\",\"lens_notes\":\"\"},\"duration\":2.5,\"dialogue_ids\":[],\"notes\":\"\"}]}"
+    },
+    {
+      "role": "user",
+      "content": "场次描述：苏晚晚在公馆确认自己重生的事实，陆景琛的名字突然浮现在她脑海中，成为她计划的关键变量。\n出场角色 id：char_su_wanwan、char_lu_jingchen\n镜头列表：\nshot_001_02_01: 第2场第1个镜头：震惊、逐渐冷静的决绝的关键演出（角色：char_su_wanwan）\nshot_001_02_02: 第2场第2个镜头：震惊、逐渐冷静的决绝的关键演出（角色：char_su_wanwan、char_lu_jingchen）\n\n请为需要台词的镜头生成对白（DialogueLine），character_id 必须来自出场角色 id 列表，shot_id 必须对应上面某个镜头 id，order 从 1 开始递增，line_zh 为中文台词，line_en 给出对应英文翻译。不是每个镜头都需要台词，只为叙事必要的镜头生成。输出必须是 {\"dialogue\": [...]} 结构。\n\n[TARGET_SCHEMA=DialogueBatch]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- Emotion: anger, sadness, joy, fear, surprise, contempt, despair, determination, calm, anxiety, vengeful, triumph, love, shock"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"dialogue\":[{\"id\":\"dlg_shot_001_02_01\",\"shot_id\":\"shot_001_02_01\",\"character_id\":\"char_su_wanwan\",\"character_name\":\"苏晚晚\",\"order\":1,\"line_zh\":\"这一次，我不会再心软。\",\"line_en\":\"This time, I won't hold back.\",\"emotion\":\"determination\",\"voice_direction\":\"\",\"subtitle_style\":\"\"},{\"id\":\"dlg_shot_001_02_02\",\"shot_id\":\"shot_001_02_02\",\"character_id\":\"char_lu_jingchen\",\"character_name\":\"陆景琛\",\"order\":2,\"line_zh\":\"你以为你还能像上辈子一样赢吗？\",\"line_en\":\"Do you think you can win like last time?\",\"emotion\":\"contempt\",\"voice_direction\":\"\",\"subtitle_style\":\"\"}]}"
+    },
+    {
+      "role": "user",
+      "content": "镜头信息：地点=临江洲际酒店订婚宴会厅，角色=char_su_wanwan，动作=第1场第1个镜头：紧张对峙、暗流涌动的关键演出，情绪=determination，景别=close_up，机位角度=eye_level。\n请为 shot_id='shot_001_01_01' 生成图像生成 prompt（竖屏 9:16，电影感短剧质感），id 使用 'img_shot_001_01_01'。\n\n[TARGET_SCHEMA=ImagePrompt]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"img_shot_001_01_01\",\"shot_id\":\"shot_001_01_01\",\"prompt_text\":\"电影感竖屏短剧画面，对应镜头 shot_001_01_01，情绪张力拉满，9:16 画幅，写实摄影质感\",\"negative_prompt\":\"低分辨率, 变形肢体, 多余手指, 水印\",\"style_tags\":[\"cinematic\",\"vertical 9:16\",\"photorealistic\"],\"aspect_ratio\":\"9:16\",\"reference_character_ids\":[],\"seed\":null}"
+    },
+    {
+      "role": "user",
+      "content": "关键帧图像 prompt：电影感竖屏短剧画面，对应镜头 shot_001_01_01，情绪张力拉满，9:16 画幅，写实摄影质感\n镜头运动：dolly_in，时长：2.5 秒，情绪：determination。\n请为 shot_id='shot_001_01_01' 生成视频生成 prompt，id 使用 'vid_shot_001_01_01'，image_prompt_id 填 'img_shot_001_01_01'，camera_movement 使用 'dolly_in'，duration 使用 2.5。\n\n[TARGET_SCHEMA=VideoPrompt]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- CameraMovement: static, pan_left, pan_right, tilt_up, tilt_down, dolly_in, dolly_out, tracking, handheld, crane, zoom_in, zoom_out, whip_pan"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"vid_shot_001_01_01\",\"shot_id\":\"shot_001_01_01\",\"image_prompt_id\":\"img_shot_001_01_01\",\"prompt_text\":\"基于关键帧生成短剧镜头动画，对应 shot_001_01_01，运镜自然，情绪连贯，符合竖屏短剧节奏\",\"motion_description\":\"缓慢推进运镜，强化情绪张力\",\"camera_movement\":\"dolly_in\",\"duration\":2.5,\"fps\":24,\"model_target\":\"generic\",\"negative_prompt\":\"画面抖动过度, 人物崩坏, 闪烁伪影\"}"
+    },
+    {
+      "role": "user",
+      "content": "镜头信息：地点=临江洲际酒店订婚宴会厅，角色=char_su_wanwan、char_su_mengyao，动作=第1场第2个镜头：紧张对峙、暗流涌动的关键演出，情绪=shock，景别=medium_shot，机位角度=eye_level。\n请为 shot_id='shot_001_01_02' 生成图像生成 prompt（竖屏 9:16，电影感短剧质感），id 使用 'img_shot_001_01_02'。\n\n[TARGET_SCHEMA=ImagePrompt]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"img_shot_001_01_02\",\"shot_id\":\"shot_001_01_02\",\"prompt_text\":\"电影感竖屏短剧画面，对应镜头 shot_001_01_02，情绪张力拉满，9:16 画幅，写实摄影质感\",\"negative_prompt\":\"低分辨率, 变形肢体, 多余手指, 水印\",\"style_tags\":[\"cinematic\",\"vertical 9:16\",\"photorealistic\"],\"aspect_ratio\":\"9:16\",\"reference_character_ids\":[],\"seed\":null}"
+    },
+    {
+      "role": "user",
+      "content": "关键帧图像 prompt：电影感竖屏短剧画面，对应镜头 shot_001_01_02，情绪张力拉满，9:16 画幅，写实摄影质感\n镜头运动：static，时长：2.5 秒，情绪：shock。\n请为 shot_id='shot_001_01_02' 生成视频生成 prompt，id 使用 'vid_shot_001_01_02'，image_prompt_id 填 'img_shot_001_01_02'，camera_movement 使用 'static'，duration 使用 2.5。\n\n[TARGET_SCHEMA=VideoPrompt]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- CameraMovement: static, pan_left, pan_right, tilt_up, tilt_down, dolly_in, dolly_out, tracking, handheld, crane, zoom_in, zoom_out, whip_pan"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"vid_shot_001_01_02\",\"shot_id\":\"shot_001_01_02\",\"image_prompt_id\":\"img_shot_001_01_02\",\"prompt_text\":\"基于关键帧生成短剧镜头动画，对应 shot_001_01_02，运镜自然，情绪连贯，符合竖屏短剧节奏\",\"motion_description\":\"缓慢推进运镜，强化情绪张力\",\"camera_movement\":\"dolly_in\",\"duration\":2.5,\"fps\":24,\"model_target\":\"generic\",\"negative_prompt\":\"画面抖动过度, 人物崩坏, 闪烁伪影\"}"
+    },
+    {
+      "role": "user",
+      "content": "镜头信息：地点=苏氏公馆卧室，角色=char_su_wanwan，动作=第2场第1个镜头：震惊、逐渐冷静的决绝的关键演出，情绪=determination，景别=close_up，机位角度=eye_level。\n请为 shot_id='shot_001_02_01' 生成图像生成 prompt（竖屏 9:16，电影感短剧质感），id 使用 'img_shot_001_02_01'。\n\n[TARGET_SCHEMA=ImagePrompt]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"img_shot_001_02_01\",\"shot_id\":\"shot_001_02_01\",\"prompt_text\":\"电影感竖屏短剧画面，对应镜头 shot_001_02_01，情绪张力拉满，9:16 画幅，写实摄影质感\",\"negative_prompt\":\"低分辨率, 变形肢体, 多余手指, 水印\",\"style_tags\":[\"cinematic\",\"vertical 9:16\",\"photorealistic\"],\"aspect_ratio\":\"9:16\",\"reference_character_ids\":[],\"seed\":null}"
+    },
+    {
+      "role": "user",
+      "content": "关键帧图像 prompt：电影感竖屏短剧画面，对应镜头 shot_001_02_01，情绪张力拉满，9:16 画幅，写实摄影质感\n镜头运动：dolly_in，时长：2.5 秒，情绪：determination。\n请为 shot_id='shot_001_02_01' 生成视频生成 prompt，id 使用 'vid_shot_001_02_01'，image_prompt_id 填 'img_shot_001_02_01'，camera_movement 使用 'dolly_in'，duration 使用 2.5。\n\n[TARGET_SCHEMA=VideoPrompt]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- CameraMovement: static, pan_left, pan_right, tilt_up, tilt_down, dolly_in, dolly_out, tracking, handheld, crane, zoom_in, zoom_out, whip_pan"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"vid_shot_001_02_01\",\"shot_id\":\"shot_001_02_01\",\"image_prompt_id\":\"img_shot_001_02_01\",\"prompt_text\":\"基于关键帧生成短剧镜头动画，对应 shot_001_02_01，运镜自然，情绪连贯，符合竖屏短剧节奏\",\"motion_description\":\"缓慢推进运镜，强化情绪张力\",\"camera_movement\":\"dolly_in\",\"duration\":2.5,\"fps\":24,\"model_target\":\"generic\",\"negative_prompt\":\"画面抖动过度, 人物崩坏, 闪烁伪影\"}"
+    },
+    {
+      "role": "user",
+      "content": "镜头信息：地点=苏氏公馆卧室，角色=char_su_wanwan、char_lu_jingchen，动作=第2场第2个镜头：震惊、逐渐冷静的决绝的关键演出，情绪=shock，景别=medium_shot，机位角度=eye_level。\n请为 shot_id='shot_001_02_02' 生成图像生成 prompt（竖屏 9:16，电影感短剧质感），id 使用 'img_shot_001_02_02'。\n\n[TARGET_SCHEMA=ImagePrompt]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"img_shot_001_02_02\",\"shot_id\":\"shot_001_02_02\",\"prompt_text\":\"电影感竖屏短剧画面，对应镜头 shot_001_02_02，情绪张力拉满，9:16 画幅，写实摄影质感\",\"negative_prompt\":\"低分辨率, 变形肢体, 多余手指, 水印\",\"style_tags\":[\"cinematic\",\"vertical 9:16\",\"photorealistic\"],\"aspect_ratio\":\"9:16\",\"reference_character_ids\":[],\"seed\":null}"
+    },
+    {
+      "role": "user",
+      "content": "关键帧图像 prompt：电影感竖屏短剧画面，对应镜头 shot_001_02_02，情绪张力拉满，9:16 画幅，写实摄影质感\n镜头运动：static，时长：2.5 秒，情绪：shock。\n请为 shot_id='shot_001_02_02' 生成视频生成 prompt，id 使用 'vid_shot_001_02_02'，image_prompt_id 填 'img_shot_001_02_02'，camera_movement 使用 'static'，duration 使用 2.5。\n\n[TARGET_SCHEMA=VideoPrompt]\n只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。\n\n以下字段只能从给定枚举值里精确选一个（不要用同义词或自造值）：\n- CameraMovement: static, pan_left, pan_right, tilt_up, tilt_down, dolly_in, dolly_out, tracking, handheld, crane, zoom_in, zoom_out, whip_pan"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"id\":\"vid_shot_001_02_02\",\"shot_id\":\"shot_001_02_02\",\"image_prompt_id\":\"img_shot_001_02_02\",\"prompt_text\":\"基于关键帧生成短剧镜头动画，对应 shot_001_02_02，运镜自然，情绪连贯，符合竖屏短剧节奏\",\"motion_description\":\"缓慢推进运镜，强化情绪张力\",\"camera_movement\":\"dolly_in\",\"duration\":2.5,\"fps\":24,\"model_target\":\"generic\",\"negative_prompt\":\"画面抖动过度, 人物崩坏, 闪烁伪影\"}"
+    }
+  ],
+  "summary": "",
+  "summarized_upto": 0,
+  "created_at": 1789307154.790389,
+  "updated_at": 1789307154.8125172
+}

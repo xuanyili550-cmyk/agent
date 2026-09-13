@@ -60,6 +60,9 @@ services:
       DATABASE_URL: postgresql+psycopg2://ai_short_drama:ai_short_drama_dev_only@postgres:5432/ai_short_drama
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
+      # LLM 会话历史（llm_task 的 context_id）存 Redis db 1，和 broker 的 db 0 分开；
+      # 不设 LLM_CONTEXT_TTL_SECONDS 即永不过期，多个 worker 副本共享同一份历史
+      LLM_CONTEXT_REDIS_URL: redis://redis:6379/1
     # deploy.resources.reservations.devices requires the NVIDIA Container Toolkit on
     # the host; uncomment when running on a GPU node.
     # deploy:

@@ -129,6 +129,42 @@ Shot 是贯穿整条流水线的关联键：`03_STRUCTURED_DATA.Shot.id` -> `Ima
 `payload["model"]` 不是 `claude*`/`gpt*` 这种名字，队列就会跑在免费的开源模型上，除非
 你显式要求用付费 API 模型。
 
+## LLM 会话记忆（历史消息长期保留，触顶才裁剪）
+
+所有 LLM 调用（六个 agent + `llm_task` 队列任务）都支持带上同一会话的历史消息，
+实现在 `02_STORY_ENGINE/agents/memory.py`：
+
+- **持久化**：`ConversationStore` 抽象，三种实现——`InMemoryConversationStore`（测试）、
+  `FileConversationStore`（每个会话一个 JSON 文件，原子写入）、`RedisConversationStore`
+  （多 worker 共享，可选 TTL，不设即永不过期）。存储里的完整历史**永远不主动删**。
+- **窗口**：`ConversationMemory.window(system_prompt, user_prompt)` 按
+  `模型上下文上限 - 输出余量 - system prompt - 本次 prompt` 算预算，没超就把历史原样全带；
+  超了才从最旧的轮次开始成对丢（`compaction="truncate"`，默认），或先用同一个 LLM 压成
+  摘要再接着带（`compaction="summarize"`）。
+- **上下文上限**：`context_window_for(model)` 按模型名前缀查表（claude 200k、gpt-4o 128k、
+  Phi-3.5 128k……未知模型保守按 8k）；`LocalTransformersProvider` 加载权重后会用模型 config
+  里的 `max_position_embeddings` 覆盖表里的估计值。
+- **只记成功轮次**：`BaseAgent.generate()` 里 JSON 校验失败的重试不进历史，避免历史被
+  报错信息灌满。
+
+用法：
+
+```python
+from agents import StoryAgent, CharacterAgent, FileConversationStore, build_memory
+
+memory = build_memory(provider, context_id="project_001", store=FileConversationStore("contexts"))
+story_agent = StoryAgent(provider, memory=memory)
+character_agent = CharacterAgent(provider, memory=memory)   # 共用同一份历史
+```
+
+`02_STORY_ENGINE/demo.py` 已经这样接好：历史落在 `02_STORY_ENGINE/demo_output/conversations/`，
+重跑 demo 会先加载上次的轮次再继续。队列侧 `llm_task` 的 payload 传 `context_id` 就会续接
+该会话（返回值多了 `context_id` 和 `history_turns`），存储后端由环境变量决定：
+`LLM_CONTEXT_REDIS_URL`（生产，docker-compose 已给 `worker_llm` 配好 `redis://redis:6379/1`）
+或 `LLM_CONTEXT_DIR`（本地文件，默认系统临时目录下 `ai_short_drama_contexts`）。
+测试：`pytest 02_STORY_ENGINE/tests/test_memory.py`（14 个用例，不需要 API key 和模型权重；
+Redis 存储另外用本机临时起的 `redis-server` 实跑验证过读写、TTL 和经 `llm_task` 续接）。
+
 每个类别更完整的免费/开源候选列表，都带许可证说明（拿不准的地方明确写"需要自行核实"，
 不瞎猜）：`06_MODELS/{llm,image,video,vlm,tts,asr,lipsync}/registry.json`。
 

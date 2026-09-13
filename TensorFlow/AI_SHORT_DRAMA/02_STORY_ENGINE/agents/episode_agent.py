@@ -12,13 +12,16 @@ for _p in Path(__file__).resolve().parents:
 import schemas as sch
 
 from .base import AgentGenerationError, BaseAgent, LLMProvider, PROMPTS_DIR
+from .memory import ConversationMemory
 
 
 class EpisodeAgent(BaseAgent):
     SYSTEM_PROMPT_FILE = PROMPTS_DIR / "episode_agent_system.txt"
 
-    def __init__(self, provider: LLMProvider, max_retries: int = 3):
-        super().__init__(provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries)
+    def __init__(self, provider: LLMProvider, max_retries: int = 3, memory: ConversationMemory | None = None):
+        super().__init__(
+            provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries, memory=memory
+        )
 
     def generate_episode(
         self,

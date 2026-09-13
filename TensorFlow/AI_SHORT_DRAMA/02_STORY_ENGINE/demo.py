@@ -17,11 +17,13 @@ from agents import (
     CharacterAgent,
     DialogueBatch,
     EpisodeAgent,
+    FileConversationStore,
     MockLLMProvider,
     PromptAgent,
     ScreenplayAgent,
     StoryAgent,
     StoryboardAgent,
+    build_memory,
 )
 from planners import EpisodePlanner, SeasonArcPlanner
 from workflows.pipeline import AgentBundle, build_graph
@@ -276,13 +278,21 @@ def build_mock_provider() -> MockLLMProvider:
 
 def main() -> None:
     provider = build_mock_provider()
+    out_dir = ROOT / "02_STORY_ENGINE" / "demo_output"
+    out_dir.mkdir(exist_ok=True)
+
+    # 整条流水线共用一个会话记忆：六个 agent 的每一次成功调用都追加进同一份历史，
+    # 历史落盘在 demo_output/conversations/<context_id>.json，重跑 demo 会接着上次继续。
+    memory = build_memory(provider, context_id="drama_demo_story_001", store=FileConversationStore(out_dir / "conversations"))
+    print(f"会话 {memory.context_id}：加载到 {memory.turn_count} 轮历史，上下文上限 {memory.max_context_tokens} tokens")
+
     bundle = AgentBundle(
-        story_agent=StoryAgent(provider),
-        character_agent=CharacterAgent(provider),
-        episode_agent=EpisodeAgent(provider),
-        screenplay_agent=ScreenplayAgent(provider),
-        storyboard_agent=StoryboardAgent(provider),
-        prompt_agent=PromptAgent(provider),
+        story_agent=StoryAgent(provider, memory=memory),
+        character_agent=CharacterAgent(provider, memory=memory),
+        episode_agent=EpisodeAgent(provider, memory=memory),
+        screenplay_agent=ScreenplayAgent(provider, memory=memory),
+        storyboard_agent=StoryboardAgent(provider, memory=memory),
+        prompt_agent=PromptAgent(provider, memory=memory),
         season_planner=SeasonArcPlanner(num_episodes=12),
         episode_planner=EpisodePlanner(),
     )
@@ -309,9 +319,9 @@ def main() -> None:
     print(f"scenes={len(result['scenes'])} shots={len(result['shots'])} dialogue_lines={total_dialogue}")
     print("\n=== Prompts ===")
     print(f"image_prompts={len(result['image_prompts'])} video_prompts={len(result['video_prompts'])}")
-
-    out_dir = ROOT / "02_STORY_ENGINE" / "demo_output"
-    out_dir.mkdir(exist_ok=True)
+    print("\n=== Conversation Memory ===")
+    print(f"本次 LLM 调用 {len(provider.calls)} 次，历史累计 {memory.turn_count} 轮，"
+          f"最后一次调用携带 {provider.calls[-1]['history_len']} 条历史消息")
 
     story_file = sch.StoryFile(story_bible=result["story_bible"], season_arcs=[result["season_arc"]])
     characters_file = sch.CharactersFile(characters=result["characters"])

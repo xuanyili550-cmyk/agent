@@ -96,6 +96,25 @@ payload -> 调用对应 Provider -> 存文件 -> 写 AssetRecord -> 返回结果
 （1 张 GPU 到 100 张 GPU 架构不用改，见原始需求里的说法）。如果把 QC 判断逻辑塞进
 生成 task 里，task 就变得又慢又难测试，扩展的时候还得考虑"这个 worker 到底在干嘛"。
 
+### 2.7 LLM 调用带长期会话记忆，历史只在逼近上下文上限时才裁剪
+
+`02_STORY_ENGINE/agents/memory.py::ConversationMemory` 是一个会话（`context_id`）的
+历史消息容器：每次成功的 user -> assistant 轮次都追加进去并持久化
+（`ConversationStore` 抽象，内存 / 本地 JSON 文件 / Redis 三种实现），下一次调用前用
+`window()` 取"塞得进模型上下文"的那一段历史，连同本次 prompt 一起发给模型。
+预算 = 模型上下文上限 - 输出余量 - system prompt - 本次 prompt；**没超预算就原样全带，
+超了才从最旧的轮次开始成对丢**（或先交给同一个 LLM 压成摘要，`compaction="summarize"`）。
+`BaseAgent` 接受 `memory=` 参数，六个 agent 共用同一个 memory 就等于整条流水线在一个连续
+对话里完成；`13_INFRA/queue/llm_task.py` 按 payload 里的 `context_id` 续接会话。
+
+**为什么**：流水线里角色 -> 剧集 -> 剧本 -> 分镜是环环相扣的，无状态单轮调用意味着
+生成分镜时模型根本看不到前面定下的角色 id 和剧本，只能靠 prompt 里手工复述，一遗漏就
+前后矛盾。带历史的做法和生产上的聊天应用一致：历史落盘（worker 重启、换机器都不丢），
+裁剪只在触顶时发生，而且**存储里的完整历史永远不删**，裁的只是本次发送的窗口，
+方便审计和回放。手写时最容易漏的两点：① 预算要把 system prompt 和本次 prompt 一起算进去，
+不能只看历史本身；② 裁剪要按 user/assistant **成对**丢，Anthropic API 要求消息严格交替
+且以 user 开头，丢单条会直接报 400。
+
 ## 3. 分层职责一览
 
 | 层 | 输入 | 输出 | 不该做的事 |
