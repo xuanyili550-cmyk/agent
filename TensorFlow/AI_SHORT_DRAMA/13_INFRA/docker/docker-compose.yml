@@ -1,10 +1,61 @@
+# 生产拓扑参考：Postgres + Redis + API + 每个 GPU 队列一个 worker + Prometheus。
+# 把 .env.example 复制成 13_INFRA/docker/.env 后 `docker compose up -d`。
+# 密钥用 env_file / Docker secrets（<NAME>_FILE），不要写进这个文件。
+
+x-app-env: &app-env
+  APP_ENV: ${APP_ENV:-staging}
+  LOG_JSON: "true"
+  DATABASE_URL: postgresql+psycopg2://ai_short_drama:${POSTGRES_PASSWORD:-ai_short_drama_dev_only}@postgres:5432/ai_short_drama
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/0
+  # LLM 会话历史 + API 限流计数存 Redis db 1，和 broker 的 db 0 分开；多个 worker 副本共享
+  LLM_CONTEXT_REDIS_URL: redis://redis:6379/1
+  STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+  STORAGE_LOCAL_ROOT: /app/storage_data
+  # 关键帧/成片/manifest 放共享卷：image worker 生成的图，qc worker 渲染时要读得到
+  ARTIFACTS_ROOT: /app/artifacts
+  LLM_PROVIDER: ${LLM_PROVIDER:-local}
+  LLM_MODEL: ${LLM_MODEL:-}
+  IMAGE_BACKEND: ${IMAGE_BACKEND:-dummy}
+  QC_BACKEND: ${QC_BACKEND:-clip}
+  REQUIRE_HUMAN_REVIEW: ${REQUIRE_HUMAN_REVIEW:-true}
+  PUBLISH_DRY_RUN: ${PUBLISH_DRY_RUN:-true}
+  METRICS_ENABLED: "true"
+  WORKER_METRICS_PORT: "9100"
+
+x-secrets-env: &secrets-env
+  API_KEYS: ${API_KEYS:?API_KEYS 必须设置}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  RUNWAY_API_KEY: ${RUNWAY_API_KEY:-}
+  ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+  TIKTOK_ACCESS_TOKEN: ${TIKTOK_ACCESS_TOKEN:-}
+
+x-worker: &worker
+  build:
+    context: ../..
+    dockerfile: 13_INFRA/docker/Dockerfile
+    args:
+      INSTALL_ML: "1"
+  restart: unless-stopped
+  depends_on:
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  environment:
+    <<: [*app-env, *secrets-env]
+  volumes:
+    - artifacts:/app/artifacts
+    - storage_data:/app/storage_data
+    - hf_cache:/home/app/.cache/huggingface
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      # Local development only -- replace with secrets/managed credentials in production.
       POSTGRES_USER: ai_short_drama
-      POSTGRES_PASSWORD: ai_short_drama_dev_only
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_short_drama_dev_only}
       POSTGRES_DB: ai_short_drama
     ports:
       - "5432:5432"
@@ -18,53 +69,56 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  # 表结构变更只通过 Alembic；API 启动前先跑一次 migrate
+  migrate:
+    build:
+      context: ../..
+      dockerfile: 13_INFRA/docker/Dockerfile
+    command: ["sh", "-c", "cd 13_INFRA/database && alembic upgrade head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      API_KEYS: migrate-only
+
   api:
     build:
       context: ../..
       dockerfile: 13_INFRA/docker/Dockerfile
+    restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg2://ai_short_drama:ai_short_drama_dev_only@postgres:5432/ai_short_drama
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
-      STORAGE_BACKEND: local
-      STORAGE_LOCAL_ROOT: /app/storage_data
+      <<: [*app-env, *secrets-env]
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
     ports:
       - "8000:8000"
     volumes:
+      - artifacts:/app/artifacts
       - storage_data:/app/storage_data
 
-  # One worker service per GPU queue so each can be scaled/scheduled onto GPU nodes
-  # independently; qc_worker is CPU-only (ffmpeg/opencv/CLIP inference, no training).
+  # 每个 GPU 队列一个 worker 服务，各自独立扩缩容/调度到 GPU 节点；qc worker 只吃 CPU
+  # （ffmpeg/opencv/CLIP 推理），渲染、manifest、发布、分析也都在 qc 队列。
   worker_llm:
-    build:
-      context: ../..
-      dockerfile: 13_INFRA/docker/Dockerfile
-    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "llm", "--loglevel=INFO"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg2://ai_short_drama:ai_short_drama_dev_only@postgres:5432/ai_short_drama
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
-      # LLM 会话历史（llm_task 的 context_id）存 Redis db 1，和 broker 的 db 0 分开；
-      # 不设 LLM_CONTEXT_TTL_SECONDS 即永不过期，多个 worker 副本共享同一份历史
-      LLM_CONTEXT_REDIS_URL: redis://redis:6379/1
-    # deploy.resources.reservations.devices requires the NVIDIA Container Toolkit on
-    # the host; uncomment when running on a GPU node.
+    <<: *worker
+    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "llm", "--loglevel=INFO", "--concurrency=1"]
+    # deploy.resources.reservations.devices 需要宿主机装 NVIDIA Container Toolkit；GPU 节点上取消注释
     # deploy:
     #   resources:
     #     reservations:
@@ -74,82 +128,45 @@ services:
     #           capabilities: [gpu]
 
   worker_image:
-    build:
-      context: ../..
-      dockerfile: 13_INFRA/docker/Dockerfile
-    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "image", "--loglevel=INFO"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg2://ai_short_drama:ai_short_drama_dev_only@postgres:5432/ai_short_drama
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    <<: *worker
+    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "image", "--loglevel=INFO", "--concurrency=1"]
 
   worker_video:
-    build:
-      context: ../..
-      dockerfile: 13_INFRA/docker/Dockerfile
-    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "video", "--loglevel=INFO"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg2://ai_short_drama:ai_short_drama_dev_only@postgres:5432/ai_short_drama
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    <<: *worker
+    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "video", "--loglevel=INFO", "--concurrency=1"]
 
   worker_tts:
-    build:
-      context: ../..
-      dockerfile: 13_INFRA/docker/Dockerfile
-    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "tts", "--loglevel=INFO"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg2://ai_short_drama:ai_short_drama_dev_only@postgres:5432/ai_short_drama
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    <<: *worker
+    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "tts", "--loglevel=INFO", "--concurrency=1"]
 
   worker_lipsync:
-    build:
-      context: ../..
-      dockerfile: 13_INFRA/docker/Dockerfile
-    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "lipsync", "--loglevel=INFO"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg2://ai_short_drama:ai_short_drama_dev_only@postgres:5432/ai_short_drama
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    <<: *worker
+    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "lipsync", "--loglevel=INFO", "--concurrency=1"]
 
   worker_qc:
+    <<: *worker
     build:
       context: ../..
       dockerfile: 13_INFRA/docker/Dockerfile
-    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "qc", "--loglevel=INFO"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql+psycopg2://ai_short_drama:ai_short_drama_dev_only@postgres:5432/ai_short_drama
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      args:
+        INSTALL_ML: "1"
+    command: ["celery", "-A", "13_INFRA.workers.celery_app", "worker", "-Q", "qc", "--loglevel=INFO", "--concurrency=2"]
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.53.0
     volumes:
       - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
     ports:
       - "9090:9090"
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.1.0
     environment:
-      # Local development only -- replace with a real secret/managed auth in production.
-      GF_SECURITY_ADMIN_PASSWORD: admin_dev_only
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../monitoring/grafana_dashboard.json:/var/lib/grafana/dashboards/ai_short_drama.json:ro
     ports:
       - "3000:3000"
     depends_on:
@@ -157,4 +174,9 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
+  artifacts:
   storage_data:
+  hf_cache:
+  prometheus_data:
+  grafana_data:

@@ -68,9 +68,7 @@ class TikTokPublishClient(PublishClient):
                 "source": "FILE_UPLOAD",
                 "video_size": video_size,
                 "chunk_size": min(UPLOAD_CHUNK_SIZE, max(video_size, 1)),
-                "total_chunk_count": max(
-                    1, -(-video_size // UPLOAD_CHUNK_SIZE)
-                )  # ceil division
+                "total_chunk_count": max(1, -(-video_size // UPLOAD_CHUNK_SIZE))  # ceil division
                 if video_size
                 else 1,
             },
@@ -82,9 +80,7 @@ class TikTokPublishClient(PublishClient):
         if not post_info.get("title"):
             raise PayloadValidationError("tiktok payload missing post_info.title")
         if post_info["privacy_level"] not in VALID_PRIVACY_LEVELS:
-            raise PayloadValidationError(
-                f"invalid privacy_level, must be one of {VALID_PRIVACY_LEVELS}"
-            )
+            raise PayloadValidationError(f"invalid privacy_level, must be one of {VALID_PRIVACY_LEVELS}")
         source_info = payload.get("source_info", {})
         if source_info.get("source") != "FILE_UPLOAD":
             raise PayloadValidationError("only FILE_UPLOAD source is implemented")
@@ -99,9 +95,20 @@ class TikTokPublishClient(PublishClient):
             "Content-Type": "application/json; charset=UTF-8",
         }
 
-    def _do_upload(
-        self, episode: EpisodeManifest, payload: dict[str, Any]
-    ) -> PublishResult:
+    def fetch_status(self, remote_id: str) -> tuple[PublishStatus, str | None, str | None]:
+        """POST /post/publish/status/fetch/：PUBLISH_COMPLETE / FAILED / 其余仍在处理。"""
+        resp = requests.post(STATUS_ENDPOINT, json={"publish_id": remote_id}, headers=self._auth_headers(), timeout=self.timeout_sec)
+        data = resp.json().get("data", {})
+        status = data.get("status", "PROCESSING_DOWNLOAD")
+        if status == "PUBLISH_COMPLETE":
+            post_ids = data.get("publicaly_available_post_id") or []
+            url = f"https://www.tiktok.com/@/video/{post_ids[0]}" if post_ids else None
+            return PublishStatus.PUBLISHED, url, None
+        if status == "FAILED":
+            return PublishStatus.FAILED, None, data.get("fail_reason", "unknown failure")
+        return PublishStatus.IN_REVIEW, None, None
+
+    def _do_upload(self, episode: EpisodeManifest, payload: dict[str, Any]) -> PublishResult:
         init_body = {
             "post_info": payload["post_info"],
             "source_info": payload["source_info"],

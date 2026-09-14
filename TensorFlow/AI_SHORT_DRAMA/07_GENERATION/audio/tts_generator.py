@@ -3,6 +3,7 @@ Text-to-speech generation via a pluggable provider abstraction. Same pattern
 as video_generator.py: concrete providers are API client placeholders that
 read their key from an env var and raise NotConfiguredError if missing.
 """
+
 from __future__ import annotations
 
 import os
@@ -15,6 +16,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from asset_registry import AssetRecord, new_asset_id, now_iso, write_asset_record  # noqa: E402
 from errors import NotConfiguredError  # noqa: E402
+from http_retry import request_with_retry  # noqa: E402
 
 
 class BaseTTSProvider(ABC):
@@ -44,13 +46,10 @@ class ElevenLabsTTSProvider(BaseTTSProvider):
         output_dir: str = "./outputs",
         seed: Optional[int] = None,
     ) -> str:
-        import requests
-
         headers = {"xi-api-key": self.api_key, "Content-Type": "application/json"}
         payload = {"text": text, "model_id": "eleven_multilingual_v2"}
 
-        response = requests.post(self.API_URL_TEMPLATE.format(voice_id=voice_id), json=payload, headers=headers, timeout=60)
-        response.raise_for_status()
+        response = request_with_retry("POST", self.API_URL_TEMPLATE.format(voice_id=voice_id), json=payload, headers=headers)
 
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)

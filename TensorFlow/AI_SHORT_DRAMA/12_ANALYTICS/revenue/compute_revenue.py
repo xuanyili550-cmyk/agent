@@ -25,14 +25,7 @@ def compute_revenue(events: pd.DataFrame) -> dict:
     arpu = round(total_revenue / total_users, 4) if total_users else 0.0
     arppu = round(total_revenue / paying_users, 4) if paying_users else 0.0
 
-    per_episode = (
-        purchases.groupby("episode_id")["amount_usd"]
-        .sum()
-        .round(4)
-        .rename("revenue_usd")
-        .reset_index()
-        .sort_values("revenue_usd", ascending=False)
-    )
+    per_episode = purchases.groupby("episode_id")["amount_usd"].sum().round(4).rename("revenue_usd").reset_index().sort_values("revenue_usd", ascending=False)
 
     return {
         "total_revenue_usd": total_revenue,

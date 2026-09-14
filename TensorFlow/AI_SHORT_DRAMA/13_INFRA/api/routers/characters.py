@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from ...database.models import Character, Project
 from ..deps import get_db
+from ..pagination import Page, page_params, paginate
 from ..schemas import CharacterCreate, CharacterRead
+from ..security import require_api_key
 
-router = APIRouter(prefix="/characters", tags=["characters"])
+router = APIRouter(prefix="/characters", tags=["characters"], dependencies=[Depends(require_api_key)])
 
 
 @router.post("", response_model=CharacterRead, status_code=201)
@@ -29,8 +31,8 @@ def create_character(payload: CharacterCreate, db: Session = Depends(get_db)) ->
 
 
 @router.get("", response_model=List[CharacterRead])
-def list_characters(db: Session = Depends(get_db)) -> List[Character]:
-    return db.query(Character).order_by(Character.created_at.desc()).all()
+def list_characters(response: Response, db: Session = Depends(get_db), page: Page = Depends(page_params)) -> List[Character]:
+    return paginate(db.query(Character).order_by(Character.created_at.desc()), page, response)
 
 
 @router.get("/{character_id}", response_model=CharacterRead)

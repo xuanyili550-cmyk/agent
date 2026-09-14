@@ -10,6 +10,7 @@ Example:
     --dataset_path /path/to/instruction_response.jsonl \
     --output_dir ./out/qwen2.5-1.5b-shot-sft
 """
+
 from __future__ import annotations
 
 import argparse

@@ -55,6 +55,62 @@
       "aspect_ratio": "9:16",
       "reference_character_ids": [],
       "seed": null
+    },
+    {
+      "id": "img_shot_002_01_01",
+      "shot_id": "shot_002_01_01",
+      "prompt_text": "电影感竖屏短剧画面，对应镜头 shot_002_01_01，情绪张力拉满，9:16 画幅，写实摄影质感",
+      "negative_prompt": "低分辨率, 变形肢体, 多余手指, 水印",
+      "style_tags": [
+        "cinematic",
+        "vertical 9:16",
+        "photorealistic"
+      ],
+      "aspect_ratio": "9:16",
+      "reference_character_ids": [],
+      "seed": null
+    },
+    {
+      "id": "img_shot_002_01_02",
+      "shot_id": "shot_002_01_02",
+      "prompt_text": "电影感竖屏短剧画面，对应镜头 shot_002_01_02，情绪张力拉满，9:16 画幅，写实摄影质感",
+      "negative_prompt": "低分辨率, 变形肢体, 多余手指, 水印",
+      "style_tags": [
+        "cinematic",
+        "vertical 9:16",
+        "photorealistic"
+      ],
+      "aspect_ratio": "9:16",
+      "reference_character_ids": [],
+      "seed": null
+    },
+    {
+      "id": "img_shot_002_02_01",
+      "shot_id": "shot_002_02_01",
+      "prompt_text": "电影感竖屏短剧画面，对应镜头 shot_002_02_01，情绪张力拉满，9:16 画幅，写实摄影质感",
+      "negative_prompt": "低分辨率, 变形肢体, 多余手指, 水印",
+      "style_tags": [
+        "cinematic",
+        "vertical 9:16",
+        "photorealistic"
+      ],
+      "aspect_ratio": "9:16",
+      "reference_character_ids": [],
+      "seed": null
+    },
+    {
+      "id": "img_shot_002_02_02",
+      "shot_id": "shot_002_02_02",
+      "prompt_text": "电影感竖屏短剧画面，对应镜头 shot_002_02_02，情绪张力拉满，9:16 画幅，写实摄影质感",
+      "negative_prompt": "低分辨率, 变形肢体, 多余手指, 水印",
+      "style_tags": [
+        "cinematic",
+        "vertical 9:16",
+        "photorealistic"
+      ],
+      "aspect_ratio": "9:16",
+      "reference_character_ids": [],
+      "seed": null
     }
   ],
   "video_prompts": [
@@ -99,6 +155,54 @@
       "shot_id": "shot_001_02_02",
       "image_prompt_id": "img_shot_001_02_02",
       "prompt_text": "基于关键帧生成短剧镜头动画，对应 shot_001_02_02，运镜自然，情绪连贯，符合竖屏短剧节奏",
+      "motion_description": "缓慢推进运镜，强化情绪张力",
+      "camera_movement": "dolly_in",
+      "duration": 2.5,
+      "fps": 24,
+      "model_target": "generic",
+      "negative_prompt": "画面抖动过度, 人物崩坏, 闪烁伪影"
+    },
+    {
+      "id": "vid_shot_002_01_01",
+      "shot_id": "shot_002_01_01",
+      "image_prompt_id": "img_shot_002_01_01",
+      "prompt_text": "基于关键帧生成短剧镜头动画，对应 shot_002_01_01，运镜自然，情绪连贯，符合竖屏短剧节奏",
+      "motion_description": "缓慢推进运镜，强化情绪张力",
+      "camera_movement": "dolly_in",
+      "duration": 2.5,
+      "fps": 24,
+      "model_target": "generic",
+      "negative_prompt": "画面抖动过度, 人物崩坏, 闪烁伪影"
+    },
+    {
+      "id": "vid_shot_002_01_02",
+      "shot_id": "shot_002_01_02",
+      "image_prompt_id": "img_shot_002_01_02",
+      "prompt_text": "基于关键帧生成短剧镜头动画，对应 shot_002_01_02，运镜自然，情绪连贯，符合竖屏短剧节奏",
+      "motion_description": "缓慢推进运镜，强化情绪张力",
+      "camera_movement": "dolly_in",
+      "duration": 2.5,
+      "fps": 24,
+      "model_target": "generic",
+      "negative_prompt": "画面抖动过度, 人物崩坏, 闪烁伪影"
+    },
+    {
+      "id": "vid_shot_002_02_01",
+      "shot_id": "shot_002_02_01",
+      "image_prompt_id": "img_shot_002_02_01",
+      "prompt_text": "基于关键帧生成短剧镜头动画，对应 shot_002_02_01，运镜自然，情绪连贯，符合竖屏短剧节奏",
+      "motion_description": "缓慢推进运镜，强化情绪张力",
+      "camera_movement": "dolly_in",
+      "duration": 2.5,
+      "fps": 24,
+      "model_target": "generic",
+      "negative_prompt": "画面抖动过度, 人物崩坏, 闪烁伪影"
+    },
+    {
+      "id": "vid_shot_002_02_02",
+      "shot_id": "shot_002_02_02",
+      "image_prompt_id": "img_shot_002_02_02",
+      "prompt_text": "基于关键帧生成短剧镜头动画，对应 shot_002_02_02，运镜自然，情绪连贯，符合竖屏短剧节奏",
       "motion_description": "缓慢推进运镜，强化情绪张力",
       "camera_movement": "dolly_in",
       "duration": 2.5,

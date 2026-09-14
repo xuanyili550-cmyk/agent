@@ -1,105 +1,84 @@
 {
-  "title": "AI Short Drama - Infra Overview",
-  "uid": "ai-short-drama-infra",
+  "title": "AI Short Drama - 生产流水线",
+  "uid": "ai-short-drama",
   "timezone": "utc",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
-  "time": { "from": "now-6h", "to": "now" },
-  "templating": {
-    "list": [
-      {
-        "name": "datasource",
-        "type": "datasource",
-        "query": "prometheus",
-        "current": {}
-      }
-    ]
-  },
+  "time": {"from": "now-6h", "to": "now"},
+  "templating": {"list": []},
   "panels": [
     {
-      "id": 1,
-      "title": "API request latency (p95, by route)",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"api\"}[5m])) by (le, handler))",
-          "legendFormat": "{{handler}}"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+      "title": "API p95 延迟（按路由）",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(drama_http_request_duration_seconds_bucket{job=\"api\"}[5m])) by (le, path))", "legendFormat": "{{path}}"}]
     },
     {
-      "id": 2,
-      "title": "API request rate (by status code)",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "targets": [
-        {
-          "expr": "sum(rate(http_requests_total{job=\"api\"}[5m])) by (status_code)",
-          "legendFormat": "{{status_code}}"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
+      "title": "API 请求速率（按状态码）",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [{"expr": "sum(rate(drama_http_requests_total{job=\"api\"}[5m])) by (status)", "legendFormat": "{{status}}"}]
     },
     {
-      "id": 3,
-      "title": "Celery queue length (llm/image/video/tts/lipsync/qc)",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "targets": [
-        {
-          "expr": "celery_queue_length{job=\"celery\"}",
-          "legendFormat": "{{queue_name}}"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+      "title": "任务成功/失败/重试速率（按任务）",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "targets": [{"expr": "sum(rate(drama_task_total[5m])) by (task, status)", "legendFormat": "{{task}} {{status}}"}]
     },
     {
-      "id": 4,
-      "title": "Celery task failure rate",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "targets": [
-        {
-          "expr": "sum(rate(celery_task_failed_total{job=\"celery\"}[5m])) by (name)",
-          "legendFormat": "{{name}}"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+      "title": "任务 p95 耗时（按任务）",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(drama_task_duration_seconds_bucket[10m])) by (le, task))", "legendFormat": "{{task}}"}]
     },
     {
-      "id": 5,
-      "title": "Postgres active connections",
-      "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
-      "targets": [
-        {
-          "expr": "pg_stat_activity_count{job=\"postgres\"}",
-          "legendFormat": "connections"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+      "type": "stat",
+      "title": "正在执行的任务",
+      "gridPos": {"x": 0, "y": 16, "w": 6, "h": 6},
+      "targets": [{"expr": "sum(drama_task_in_progress) by (task)", "legendFormat": "{{task}}"}]
     },
     {
-      "id": 6,
-      "title": "Redis memory used",
       "type": "timeseries",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
-      "targets": [
-        {
-          "expr": "redis_memory_used_bytes{job=\"redis\"}",
-          "legendFormat": "used"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+      "title": "三级重试阶梯触发次数（same_params / rewrite_prompt / downscale）",
+      "gridPos": {"x": 6, "y": 16, "w": 9, "h": 6},
+      "targets": [{"expr": "sum(increase(drama_retry_ladder_total[1h])) by (level)", "legendFormat": "{{level}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "QC 判定（approved / retry）",
+      "gridPos": {"x": 15, "y": 16, "w": 9, "h": 6},
+      "targets": [{"expr": "sum(increase(drama_qc_decisions_total[1h])) by (decision)", "legendFormat": "{{decision}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM token 用量（按 provider/model）",
+      "gridPos": {"x": 0, "y": 22, "w": 12, "h": 8},
+      "targets": [{"expr": "sum(rate(drama_llm_tokens_total[5m])) by (provider, model, kind)", "legendFormat": "{{provider}}/{{model}} {{kind}}"}]
+    },
+    {
+      "type": "stat",
+      "title": "LLM 估算花费（美元，累计）",
+      "gridPos": {"x": 12, "y": 22, "w": 6, "h": 8},
+      "targets": [{"expr": "sum(drama_llm_cost_usd_total) by (provider)", "legendFormat": "{{provider}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "流水线状态变更（awaiting_review / producing / done / failed）",
+      "gridPos": {"x": 18, "y": 22, "w": 6, "h": 8},
+      "targets": [{"expr": "sum(increase(drama_pipeline_runs_total[1h])) by (status)", "legendFormat": "{{status}}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis 内存",
+      "gridPos": {"x": 0, "y": 30, "w": 12, "h": 6},
+      "targets": [{"expr": "redis_memory_used_bytes{job=\"redis\"}"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Postgres 活跃连接",
+      "gridPos": {"x": 12, "y": 30, "w": 12, "h": 6},
+      "targets": [{"expr": "pg_stat_activity_count{job=\"postgres\"}"}]
     }
   ]
 }

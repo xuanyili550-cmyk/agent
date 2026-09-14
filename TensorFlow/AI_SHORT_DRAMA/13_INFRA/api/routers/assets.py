@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from ...database.models import Asset
 from ..deps import get_db
+from ..pagination import Page, page_params, paginate
 from ..schemas import AssetCreate, AssetRead
+from ..security import require_api_key
 
-router = APIRouter(prefix="/assets", tags=["assets"])
+router = APIRouter(prefix="/assets", tags=["assets"], dependencies=[Depends(require_api_key)])
 
 
 @router.post("", response_model=AssetRead, status_code=201)
@@ -22,8 +24,8 @@ def create_asset(payload: AssetCreate, db: Session = Depends(get_db)) -> Asset:
 
 
 @router.get("", response_model=List[AssetRead])
-def list_assets(db: Session = Depends(get_db)) -> List[Asset]:
-    return db.query(Asset).order_by(Asset.created_at.desc()).all()
+def list_assets(response: Response, db: Session = Depends(get_db), page: Page = Depends(page_params)) -> List[Asset]:
+    return paginate(db.query(Asset).order_by(Asset.created_at.desc()), page, response)
 
 
 @router.get("/{asset_id}", response_model=AssetRead)

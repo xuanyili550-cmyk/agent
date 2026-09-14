@@ -17,6 +17,7 @@ Example:
     --instance_prompt "a photo of sks_lin_wei person" \
     --output_dir ./out/char_lin_wei_lora
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,7 +28,7 @@ import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionXLPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from peft import LoraConfig, get_peft_model
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer, CLIPTextModelWithProjection, PretrainedConfig
@@ -74,17 +75,17 @@ class CharacterLoraDataset(Dataset):
         self.class_prompt = class_prompt
 
     def __len__(self) -> int:
-        return max(len(self.instance_examples), len(self.class_image_paths)) if self.class_image_paths else len(
-            self.instance_examples
-        )
+        return max(len(self.instance_examples), len(self.class_image_paths)) if self.class_image_paths else len(self.instance_examples)
 
     def _prepare_image(self, pil_image):
         pil_image = pil_image.convert("RGB").resize((self.resolution, self.resolution))
-        tensor = torch.from_numpy(
-            (torch.ByteTensor(torch.ByteStorage.from_buffer(pil_image.tobytes())))
-            .reshape(self.resolution, self.resolution, 3)
-            .numpy()
-        ).permute(2, 0, 1).float() / 127.5 - 1.0
+        tensor = (
+            torch.from_numpy((torch.ByteTensor(torch.ByteStorage.from_buffer(pil_image.tobytes()))).reshape(self.resolution, self.resolution, 3).numpy())
+            .permute(2, 0, 1)
+            .float()
+            / 127.5
+            - 1.0
+        )
         return tensor
 
     def __getitem__(self, index):
@@ -118,9 +119,7 @@ def encode_prompt(tokenizers, text_encoders, prompt: str, device):
     prompt_embeds_list = []
     pooled_prompt_embeds = None
     for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-        text_inputs = tokenizer(
-            prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True, return_tensors="pt"
-        )
+        text_inputs = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True, return_tensors="pt")
         output = text_encoder(text_inputs.input_ids.to(device), output_hidden_states=True)
         pooled_prompt_embeds = output[0]
         prompt_embeds_list.append(output.hidden_states[-2])
@@ -139,21 +138,13 @@ def main() -> None:
 
     weight_dtype = {"no": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[args.mixed_precision]
 
-    tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", use_fast=False
-    )
-    tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer_2", use_fast=False
-    )
+    tokenizer_one = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer", use_fast=False)
+    tokenizer_two = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer_2", use_fast=False)
 
     text_encoder_cls_one = load_text_encoder_class(args.pretrained_model_name_or_path, "text_encoder")
     text_encoder_cls_two = load_text_encoder_class(args.pretrained_model_name_or_path, "text_encoder_2")
-    text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder"
-    )
-    text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2"
-    )
+    text_encoder_one = text_encoder_cls_one.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
+    text_encoder_two = text_encoder_cls_two.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder_2")
 
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
@@ -203,9 +194,7 @@ def main() -> None:
                 latents = vae.encode(pixel_values).latent_dist.sample() * vae.config.scaling_factor
 
                 noise = torch.randn_like(latents)
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (latents.shape[0],), device=latents.device
-                ).long()
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (latents.shape[0],), device=latents.device).long()
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 prompt_embeds, pooled_prompt_embeds = encode_prompt(
@@ -222,9 +211,7 @@ def main() -> None:
                 )
                 added_cond_kwargs = {"text_embeds": pooled_prompt_embeds, "time_ids": add_time_ids}
 
-                model_pred = unet(
-                    noisy_latents, timesteps, prompt_embeds, added_cond_kwargs=added_cond_kwargs
-                ).sample
+                model_pred = unet(noisy_latents, timesteps, prompt_embeds, added_cond_kwargs=added_cond_kwargs).sample
 
                 loss = F.mse_loss(model_pred.float(), noise.float(), reduction="mean")
 
@@ -240,9 +227,7 @@ def main() -> None:
                         accelerator.device,
                     )
                     class_added_cond_kwargs = {"text_embeds": class_pooled_embeds, "time_ids": add_time_ids}
-                    class_pred = unet(
-                        class_noisy_latents, timesteps, class_prompt_embeds, added_cond_kwargs=class_added_cond_kwargs
-                    ).sample
+                    class_pred = unet(class_noisy_latents, timesteps, class_prompt_embeds, added_cond_kwargs=class_added_cond_kwargs).sample
                     prior_loss = F.mse_loss(class_pred.float(), class_noise.float(), reduction="mean")
                     loss = loss + args.prior_loss_weight * prior_loss
 

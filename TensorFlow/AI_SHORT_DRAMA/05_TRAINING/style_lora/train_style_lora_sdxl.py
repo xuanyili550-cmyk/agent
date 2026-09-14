@@ -12,6 +12,7 @@ Example:
     --style_trigger_token "in sks_cinematic_moody style" \
     --output_dir ./out/style_cinematic_moody_lora
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,11 +64,13 @@ class StyleLoraDataset(Dataset):
     def __getitem__(self, index):
         example = self.examples[index]
         pil_image = example["image"].convert("RGB").resize((self.resolution, self.resolution))
-        tensor = torch.from_numpy(
-            (torch.ByteTensor(torch.ByteStorage.from_buffer(pil_image.tobytes())))
-            .reshape(self.resolution, self.resolution, 3)
-            .numpy()
-        ).permute(2, 0, 1).float() / 127.5 - 1.0
+        tensor = (
+            torch.from_numpy((torch.ByteTensor(torch.ByteStorage.from_buffer(pil_image.tobytes()))).reshape(self.resolution, self.resolution, 3).numpy())
+            .permute(2, 0, 1)
+            .float()
+            / 127.5
+            - 1.0
+        )
         prompt = f"{example['caption']}, {self.style_trigger_token}"
         return {"image": tensor, "prompt": prompt}
 
@@ -88,9 +91,7 @@ def encode_prompt(tokenizers, text_encoders, prompt: str, device):
     prompt_embeds_list = []
     pooled_prompt_embeds = None
     for tokenizer, text_encoder in zip(tokenizers, text_encoders):
-        text_inputs = tokenizer(
-            prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True, return_tensors="pt"
-        )
+        text_inputs = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True, return_tensors="pt")
         output = text_encoder(text_inputs.input_ids.to(device), output_hidden_states=True)
         pooled_prompt_embeds = output[0]
         prompt_embeds_list.append(output.hidden_states[-2])
@@ -108,20 +109,12 @@ def main() -> None:
     )
     weight_dtype = {"no": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[args.mixed_precision]
 
-    tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", use_fast=False
-    )
-    tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer_2", use_fast=False
-    )
+    tokenizer_one = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer", use_fast=False)
+    tokenizer_two = AutoTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer_2", use_fast=False)
     text_encoder_cls_one = load_text_encoder_class(args.pretrained_model_name_or_path, "text_encoder")
     text_encoder_cls_two = load_text_encoder_class(args.pretrained_model_name_or_path, "text_encoder_2")
-    text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder"
-    )
-    text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2"
-    )
+    text_encoder_one = text_encoder_cls_one.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
+    text_encoder_two = text_encoder_cls_two.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder_2")
 
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
@@ -162,9 +155,7 @@ def main() -> None:
                 latents = vae.encode(pixel_values).latent_dist.sample() * vae.config.scaling_factor
 
                 noise = torch.randn_like(latents)
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (latents.shape[0],), device=latents.device
-                ).long()
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (latents.shape[0],), device=latents.device).long()
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 prompt_embeds, pooled_prompt_embeds = encode_prompt(

@@ -11,7 +11,7 @@ for _p in Path(__file__).resolve().parents:
 
 import schemas as sch
 
-from .base import BaseAgent, LLMProvider, PROMPTS_DIR
+from .base import PROMPTS_DIR, BaseAgent, LLMProvider
 from .memory import ConversationMemory
 
 
@@ -19,9 +19,7 @@ class CharacterAgent(BaseAgent):
     SYSTEM_PROMPT_FILE = PROMPTS_DIR / "character_agent_system.txt"
 
     def __init__(self, provider: LLMProvider, max_retries: int = 3, memory: ConversationMemory | None = None):
-        super().__init__(
-            provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries, memory=memory
-        )
+        super().__init__(provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries, memory=memory)
 
     def generate_character(self, story_bible: sch.StoryBible, role_hint: str) -> sch.Character:
         user_prompt = (

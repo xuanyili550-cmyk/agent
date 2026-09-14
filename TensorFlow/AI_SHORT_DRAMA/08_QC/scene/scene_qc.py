@@ -9,7 +9,7 @@ from typing import List, Optional, Union
 import torch
 from PIL import Image
 
-from ..character.clip_backend import CLIPBackend, CLIPModelUnavailableError, DEFAULT_CLIP_MODEL
+from ..character.clip_backend import DEFAULT_CLIP_MODEL, CLIPBackend, CLIPModelUnavailableError
 
 __all__ = ["SceneQC", "SceneAlignmentResult", "CLIPModelUnavailableError"]
 
@@ -64,9 +64,7 @@ class SceneQC:
     def _normalize(self, raw_similarity: float) -> float:
         return max(0.0, min(1.0, raw_similarity * self.similarity_scale))
 
-    def score_image(
-        self, scene_description: str, image_path: PathLike
-    ) -> SceneAlignmentResult:
+    def score_image(self, scene_description: str, image_path: PathLike) -> SceneAlignmentResult:
         path = Path(image_path)
         if not path.exists():
             raise FileNotFoundError(f"Image not found: {path}")
@@ -113,8 +111,14 @@ class SceneQC:
     @staticmethod
     def _probe_duration(video_path: Path) -> float:
         cmd = [
-            "ffprobe", "-v", "error", "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1", str(video_path),
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(video_path),
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         try:
@@ -125,7 +129,16 @@ class SceneQC:
     @staticmethod
     def _extract_frame(video_path: Path, timestamp: float, out_path: Path) -> None:
         cmd = [
-            "ffmpeg", "-y", "-ss", f"{timestamp:.3f}", "-i", str(video_path),
-            "-frames:v", "1", "-q:v", "2", str(out_path),
+            "ffmpeg",
+            "-y",
+            "-ss",
+            f"{timestamp:.3f}",
+            "-i",
+            str(video_path),
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",
+            str(out_path),
         ]
         subprocess.run(cmd, capture_output=True, check=True)

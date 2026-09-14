@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from ...database.models import Project
 from ..deps import get_db
+from ..pagination import Page, page_params, paginate
 from ..schemas import ProjectCreate, ProjectRead
+from ..security import require_api_key
 
-router = APIRouter(prefix="/projects", tags=["projects"])
+router = APIRouter(prefix="/projects", tags=["projects"], dependencies=[Depends(require_api_key)])
 
 
 @router.post("", response_model=ProjectRead, status_code=201)
@@ -22,8 +24,8 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Pro
 
 
 @router.get("", response_model=List[ProjectRead])
-def list_projects(db: Session = Depends(get_db)) -> List[Project]:
-    return db.query(Project).order_by(Project.created_at.desc()).all()
+def list_projects(response: Response, db: Session = Depends(get_db), page: Page = Depends(page_params)) -> List[Project]:
+    return paginate(db.query(Project).order_by(Project.created_at.desc()), page, response)
 
 
 @router.get("/{project_id}", response_model=ProjectRead)

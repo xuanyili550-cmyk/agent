@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 __all__ = ["mix_bgm"]
 
@@ -51,9 +51,18 @@ def mix_bgm(
     )
 
     cmd += [
-        "-filter_complex", filter_complex,
-        "-map", "0:v", "-map", "[outa]",
-        "-c:v", "copy", "-c:a", "aac", "-t", f"{duration:.3f}",
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "0:v",
+        "-map",
+        "[outa]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
+        "-t",
+        f"{duration:.3f}",
         str(output_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -64,8 +73,14 @@ def mix_bgm(
 
 def _probe_duration(path: Path) -> float:
     cmd = [
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", str(path),
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return float(result.stdout.strip() or 0.0)

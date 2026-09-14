@@ -1,4 +1,5 @@
 """Pydantic model + loader/validator for the per-modality registry.json files."""
+
 from __future__ import annotations
 
 import json

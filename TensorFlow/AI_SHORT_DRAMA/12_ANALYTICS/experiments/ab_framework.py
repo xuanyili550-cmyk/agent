@@ -16,7 +16,7 @@ def assign_variant(
     salt: str = "",
 ) -> str:
     weights = weights or tuple(1.0 / len(variants) for _ in variants)
-    digest = hashlib.md5(f"{experiment_name}:{salt}:{user_id}".encode("utf-8")).hexdigest()
+    digest = hashlib.md5(f"{experiment_name}:{salt}:{user_id}".encode()).hexdigest()
     # stable bucket in [0, 1) derived from the hash, independent of dict/set ordering
     bucket = int(digest[:8], 16) / 0xFFFFFFFF
 
@@ -43,9 +43,7 @@ def summarize_experiment(events: pd.DataFrame, experiment_name: str) -> pd.DataF
     return summary.reset_index()
 
 
-def two_proportion_z_test(
-    successes_a: int, n_a: int, successes_b: int, n_b: int
-) -> dict:
+def two_proportion_z_test(successes_a: int, n_a: int, successes_b: int, n_b: int) -> dict:
     p_a = successes_a / n_a
     p_b = successes_b / n_b
     p_pool = (successes_a + successes_b) / (n_a + n_b)
@@ -70,7 +68,9 @@ if __name__ == "__main__":
     row_a = summary[summary["variant"] == "control"].iloc[0]
     row_b = summary[summary["variant"] == "treatment"].iloc[0]
     test = two_proportion_z_test(
-        int(row_a["converted_users"]), int(row_a["exposed_users"]),
-        int(row_b["converted_users"]), int(row_b["exposed_users"]),
+        int(row_a["converted_users"]),
+        int(row_a["exposed_users"]),
+        int(row_b["converted_users"]),
+        int(row_b["exposed_users"]),
     )
     print(test)

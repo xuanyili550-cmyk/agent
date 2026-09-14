@@ -17,8 +17,6 @@ class ReelShortPublishClient(GenericHTTPAdapter):
 
     def __init__(self, config_path: str | Path | None = None) -> None:
         resolved = Path(
-            config_path
-            or os.environ.get("REELSHORT_CONFIG_PATH", "")
-            or (DEFAULT_CONFIG_PATH if DEFAULT_CONFIG_PATH.exists() else EXAMPLE_CONFIG_PATH)
+            config_path or os.environ.get("REELSHORT_CONFIG_PATH", "") or (DEFAULT_CONFIG_PATH if DEFAULT_CONFIG_PATH.exists() else EXAMPLE_CONFIG_PATH)
         )
         super().__init__("reelshort", GenericHTTPAdapterConfig.from_yaml(resolved))

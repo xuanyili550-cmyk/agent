@@ -3,6 +3,7 @@ Generates solid-color placeholder PNGs with a text label using PIL only.
 No real image assets, no network access. Used so downstream training/generation
 code has something to load during offline smoke tests.
 """
+
 from __future__ import annotations
 
 import argparse

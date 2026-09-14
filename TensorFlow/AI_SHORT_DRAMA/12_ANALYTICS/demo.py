@@ -53,8 +53,10 @@ def main() -> None:
     row_a = ab_summary[ab_summary["variant"] == "control"].iloc[0]
     row_b = ab_summary[ab_summary["variant"] == "treatment"].iloc[0]
     test_result = ab_mod.two_proportion_z_test(
-        int(row_a["converted_users"]), int(row_a["exposed_users"]),
-        int(row_b["converted_users"]), int(row_b["exposed_users"]),
+        int(row_a["converted_users"]),
+        int(row_a["exposed_users"]),
+        int(row_b["converted_users"]),
+        int(row_b["exposed_users"]),
     )
     print(test_result)
 

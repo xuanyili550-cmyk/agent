@@ -47,20 +47,23 @@ def mix_sfx(
     for i, event in enumerate(events, start=1):
         delay_ms = max(int(round(event.start_sec * 1000)), 0)
         gain = _db_to_linear(event.volume_db)
-        filter_parts.append(
-            f"[{i}:a]volume={gain:.6f},adelay={delay_ms}|{delay_ms}[sfx{i}]"
-        )
+        filter_parts.append(f"[{i}:a]volume={gain:.6f},adelay={delay_ms}|{delay_ms}[sfx{i}]")
         mix_labels.append(f"sfx{i}")
 
     mix_inputs = "".join(f"[{label}]" for label in mix_labels)
-    filter_complex = ";".join(filter_parts) + (
-        f";{mix_inputs}amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0[outa]"
-    )
+    filter_complex = ";".join(filter_parts) + (f";{mix_inputs}amix=inputs={len(mix_labels)}:duration=first:dropout_transition=0[outa]")
 
     cmd += [
-        "-filter_complex", filter_complex,
-        "-map", "0:v", "-map", "[outa]",
-        "-c:v", "copy", "-c:a", "aac",
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "0:v",
+        "-map",
+        "[outa]",
+        "-c:v",
+        "copy",
+        "-c:a",
+        "aac",
         str(output_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)

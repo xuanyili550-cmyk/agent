@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 
 import schemas as sch
 
-from .base import BaseAgent, LLMProvider, PROMPTS_DIR
+from .base import PROMPTS_DIR, BaseAgent, LLMProvider
 from .memory import ConversationMemory
 
 
@@ -27,9 +27,7 @@ class StoryboardAgent(BaseAgent):
     SYSTEM_PROMPT_FILE = PROMPTS_DIR / "storyboard_agent_system.txt"
 
     def __init__(self, provider: LLMProvider, max_retries: int = 3, memory: ConversationMemory | None = None):
-        super().__init__(
-            provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries, memory=memory
-        )
+        super().__init__(provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries, memory=memory)
 
     def generate_scene(self, episode: sch.Episode, scene_number: int, script: sch.Script) -> sch.Scene:
         user_prompt = (
@@ -46,7 +44,7 @@ class StoryboardAgent(BaseAgent):
             f"请为 scene_id='{scene.id}'（episode={episode_number}, scene={scene.scene_number}）生成 2-4 个分镜镜头，"
             "每个镜头必须包含 episode/scene/shot/character/location/action/emotion/camera/duration 字段，"
             f"id 使用 'shot_{episode_number:03d}_{scene.scene_number:02d}_XX' 格式，scene_id 字段填 '{scene.id}'。"
-            "输出必须是 {\"shots\": [...]} 结构。"
+            '输出必须是 {"shots": [...]} 结构。'
         )
         shots_file = self.generate(user_prompt, sch.ShotsFile)
         return shots_file.shots
@@ -58,7 +56,7 @@ class StoryboardAgent(BaseAgent):
             f"镜头列表：\n{shot_lines}\n\n"
             "请为需要台词的镜头生成对白（DialogueLine），character_id 必须来自出场角色 id 列表，"
             "shot_id 必须对应上面某个镜头 id，order 从 1 开始递增，line_zh 为中文台词，line_en 给出对应英文翻译。"
-            "不是每个镜头都需要台词，只为叙事必要的镜头生成。输出必须是 {\"dialogue\": [...]} 结构。"
+            '不是每个镜头都需要台词，只为叙事必要的镜头生成。输出必须是 {"dialogue": [...]} 结构。'
         )
         batch = self.generate(user_prompt, DialogueBatch)
         return batch.dialogue

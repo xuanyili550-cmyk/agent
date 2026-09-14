@@ -7,7 +7,7 @@ from typing import Iterable, Optional, Union
 import torch
 from PIL import Image
 
-from .clip_backend import CLIPBackend, CLIPModelUnavailableError, DEFAULT_CLIP_MODEL
+from .clip_backend import DEFAULT_CLIP_MODEL, CLIPBackend, CLIPModelUnavailableError
 
 __all__ = [
     "CharacterConsistencyChecker",
@@ -95,9 +95,7 @@ class CharacterConsistencyChecker:
     ) -> CharacterConsistencyResult:
         """Best-of-N: returns the highest similarity across multiple reference images
         (e.g. different poses/angles of the same character)."""
-        results = [
-            self.score(ref, generated_image, character_id) for ref in reference_images
-        ]
+        results = [self.score(ref, generated_image, character_id) for ref in reference_images]
         if not results:
             raise ValueError("reference_images must contain at least one image")
         return max(results, key=lambda r: r.similarity)

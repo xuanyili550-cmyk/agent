@@ -38,12 +38,7 @@ class VideoQCResult:
 
     @property
     def passed(self) -> bool:
-        return (
-            self.duration_ok
-            and self.resolution_ok
-            and self.black_frames_ok
-            and self.still_frames_ok
-        )
+        return self.duration_ok and self.resolution_ok and self.black_frames_ok and self.still_frames_ok
 
 
 class VideoQC:
@@ -78,15 +73,19 @@ class VideoQC:
         if not path.exists():
             raise FileNotFoundError(f"Video not found: {path}")
         cmd = [
-            "ffprobe", "-v", "error", "-print_format", "json",
-            "-show_format", "-show_streams", str(path),
+            "ffprobe",
+            "-v",
+            "error",
+            "-print_format",
+            "json",
+            "-show_format",
+            "-show_streams",
+            str(path),
         ]
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         except FileNotFoundError as exc:
-            raise RuntimeError(
-                "ffprobe not found on PATH. Install ffmpeg (which provides ffprobe)."
-            ) from exc
+            raise RuntimeError("ffprobe not found on PATH. Install ffmpeg (which provides ffprobe).") from exc
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(f"ffprobe failed on {path}: {exc.stderr}") from exc
 

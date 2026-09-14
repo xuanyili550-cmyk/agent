@@ -16,24 +16,25 @@ from schemas import (
     EpisodesFile,
     Gender,
     Genre,
+    ImagePrompt,
     IntExt,
     Location,
     PromptsFile,
-    RelationType,
     Relationship,
+    RelationType,
     Scene,
     ScenesFile,
     SeasonArc,
     Shot,
-    ShotSize,
     ShotsFile,
+    ShotSize,
     StoryBeat,
     StoryBible,
     StoryFile,
     TimeOfDay,
+    VideoPrompt,
     WorldSetting,
 )
-from schemas import ImagePrompt, VideoPrompt
 
 HERE = Path(__file__).parent
 
@@ -43,7 +44,12 @@ world = WorldSetting(
     description="虚构现代都市临江市，以修远集团、苏氏集团为首的多家家族企业盘踞其中，联姻、股权与舆论是权力更迭的三大战场。",
     time_period="架空现代都市",
     locations=[
-        Location(id="loc_engagement_hall", name="临江洲际酒店订婚宴会厅", description="全市顶级豪门举办婚庆与商务酒会的地标场地，水晶吊灯与落地窗环绕", mood="奢华、压迫、众目睽睽"),
+        Location(
+            id="loc_engagement_hall",
+            name="临江洲际酒店订婚宴会厅",
+            description="全市顶级豪门举办婚庆与商务酒会的地标场地，水晶吊灯与落地窗环绕",
+            mood="奢华、压迫、众目睽睽",
+        ),
         Location(id="loc_su_mansion", name="苏氏公馆", description="苏晚晚从小长大的老宅，欧式庭院配中式回廊", mood="表面温情、暗流涌动"),
         Location(id="loc_xingyuan_tower", name="修远集团总部大厦", description="陆景琛的商业帝国总部，顶层为其私人办公室", mood="冷峻、权力感"),
         Location(id="loc_hall_balcony", name="宴会厅露台", description="宴会厅外的露台，可俯瞰临江夜景", mood="私密、紧张对峙"),
@@ -84,8 +90,16 @@ season_arc = SeasonArc(
     resolution="苏晚晚联合陆景琛揭穿王丽芬与陈皓伪造遗嘱、构陷杀人的证据，夺回苏氏集团控制权，苏梦瑶与陈皓身败名裂。",
     beats=[
         StoryBeat(act="第一幕：重生与结盟", description="苏晚晚重生并与陆景琛因误会结识，识破当晚的第一场构陷", episode_ids=["ep_001", "ep_002", "ep_003"]),
-        StoryBeat(act="第二幕：商战反击", description="双方在股权与舆论战场多次交手，苏晚晚步步夺回话语权", episode_ids=["ep_004", "ep_005", "ep_006", "ep_007", "ep_008"]),
-        StoryBeat(act="第三幕：真相与清算", description="尘封的死亡真相浮出水面，苏晚晚完成复仇并与陆景琛确认心意", episode_ids=["ep_009", "ep_010", "ep_011", "ep_012"]),
+        StoryBeat(
+            act="第二幕：商战反击",
+            description="双方在股权与舆论战场多次交手，苏晚晚步步夺回话语权",
+            episode_ids=["ep_004", "ep_005", "ep_006", "ep_007", "ep_008"],
+        ),
+        StoryBeat(
+            act="第三幕：真相与清算",
+            description="尘封的死亡真相浮出水面，苏晚晚完成复仇并与陆景琛确认心意",
+            episode_ids=["ep_009", "ep_010", "ep_011", "ep_012"],
+        ),
     ],
     episode_ids=["ep_001", "ep_002", "ep_003", "ep_004", "ep_005", "ep_006", "ep_007", "ep_008", "ep_009", "ep_010", "ep_011", "ep_012"],
 )
@@ -231,6 +245,7 @@ shots: list[Shot] = []
 image_prompts: list[ImagePrompt] = []
 video_prompts: list[VideoPrompt] = []
 
+
 def add_shot(scene_id, ep, sc, sh_no, character, location, action, emotion, camera, duration, dialogue_ids=None, notes=""):
     sh = Shot(
         id=f"shot_{ep:03d}_{sc:02d}_{sh_no:02d}",
@@ -249,6 +264,7 @@ def add_shot(scene_id, ep, sc, sh_no, character, location, action, emotion, came
     )
     shots.append(sh)
     return sh
+
 
 # Scene 1: 订婚宴会厅 - 惨死高潮（重生前，作为强钩子序幕）
 scene1_dialogue = [
@@ -301,26 +317,71 @@ scene1 = Scene(
     dialogue=scene1_dialogue,
 )
 
-add_shot("scene_001", 1, 1, 1, ["char_su_wanwan"], "临江洲际酒店订婚宴会厅",
-          "苏晚晚身穿染血礼服跌坐在宴会厅台阶下，四周宾客窃窃私语后退",
-          Emotion.DESPAIR, CameraSpec(shot_size=ShotSize.CLOSE_UP, angle=CameraAngle.HIGH_ANGLE, movement=CameraMovement.STATIC), 2.0,
-          notes="全剧开场第一个镜头，必须在3秒内建立强钩子")
-add_shot("scene_001", 1, 1, 2, ["char_su_mengyao"], "临江洲际酒店订婚宴会厅",
-          "苏梦瑶举着文件当众宣读，泪光中带着算计的笑意",
-          Emotion.CONTEMPT, CameraSpec(shot_size=ShotSize.MEDIUM_CLOSE_UP, angle=CameraAngle.LOW_ANGLE, movement=CameraMovement.DOLLY_IN), 3.5,
-          dialogue_ids=["dlg_001_01"])
-add_shot("scene_001", 1, 1, 3, ["char_su_wanwan"], "临江洲际酒店订婚宴会厅",
-          "苏晚晚踉跄起身望向陈皓，眼神从愤怒转为绝望",
-          Emotion.DESPAIR, CameraSpec(shot_size=ShotSize.CLOSE_UP, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.HANDHELD), 3.0,
-          dialogue_ids=["dlg_001_02"])
-add_shot("scene_001", 1, 1, 4, ["char_chen_hao", "char_su_wanwan"], "临江洲际酒店订婚宴会厅",
-          "陈皓别过脸，语气冷漠地下达逐客令，宾客哗然",
-          Emotion.CONTEMPT, CameraSpec(shot_size=ShotSize.TWO_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.STATIC), 3.5,
-          dialogue_ids=["dlg_001_03"])
-add_shot("scene_001", 1, 1, 5, ["char_su_wanwan"], "临江洲际酒店订婚宴会厅",
-          "混乱中苏晚晚被推搡跌下台阶，画面猛然定格再骤然反转为黑屏",
-          Emotion.SHOCK, CameraSpec(shot_size=ShotSize.EXTREME_LONG_SHOT, angle=CameraAngle.BIRDS_EYE, movement=CameraMovement.CRANE), 2.5,
-          notes="接黑屏转场，进入重生瞬间")
+add_shot(
+    "scene_001",
+    1,
+    1,
+    1,
+    ["char_su_wanwan"],
+    "临江洲际酒店订婚宴会厅",
+    "苏晚晚身穿染血礼服跌坐在宴会厅台阶下，四周宾客窃窃私语后退",
+    Emotion.DESPAIR,
+    CameraSpec(shot_size=ShotSize.CLOSE_UP, angle=CameraAngle.HIGH_ANGLE, movement=CameraMovement.STATIC),
+    2.0,
+    notes="全剧开场第一个镜头，必须在3秒内建立强钩子",
+)
+add_shot(
+    "scene_001",
+    1,
+    1,
+    2,
+    ["char_su_mengyao"],
+    "临江洲际酒店订婚宴会厅",
+    "苏梦瑶举着文件当众宣读，泪光中带着算计的笑意",
+    Emotion.CONTEMPT,
+    CameraSpec(shot_size=ShotSize.MEDIUM_CLOSE_UP, angle=CameraAngle.LOW_ANGLE, movement=CameraMovement.DOLLY_IN),
+    3.5,
+    dialogue_ids=["dlg_001_01"],
+)
+add_shot(
+    "scene_001",
+    1,
+    1,
+    3,
+    ["char_su_wanwan"],
+    "临江洲际酒店订婚宴会厅",
+    "苏晚晚踉跄起身望向陈皓，眼神从愤怒转为绝望",
+    Emotion.DESPAIR,
+    CameraSpec(shot_size=ShotSize.CLOSE_UP, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.HANDHELD),
+    3.0,
+    dialogue_ids=["dlg_001_02"],
+)
+add_shot(
+    "scene_001",
+    1,
+    1,
+    4,
+    ["char_chen_hao", "char_su_wanwan"],
+    "临江洲际酒店订婚宴会厅",
+    "陈皓别过脸，语气冷漠地下达逐客令，宾客哗然",
+    Emotion.CONTEMPT,
+    CameraSpec(shot_size=ShotSize.TWO_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.STATIC),
+    3.5,
+    dialogue_ids=["dlg_001_03"],
+)
+add_shot(
+    "scene_001",
+    1,
+    1,
+    5,
+    ["char_su_wanwan"],
+    "临江洲际酒店订婚宴会厅",
+    "混乱中苏晚晚被推搡跌下台阶，画面猛然定格再骤然反转为黑屏",
+    Emotion.SHOCK,
+    CameraSpec(shot_size=ShotSize.EXTREME_LONG_SHOT, angle=CameraAngle.BIRDS_EYE, movement=CameraMovement.CRANE),
+    2.5,
+    notes="接黑屏转场，进入重生瞬间",
+)
 
 # Scene 2: 重生瞬间 - 苏氏公馆卧室
 scene2_dialogue = [
@@ -351,17 +412,44 @@ scene2 = Scene(
     dialogue=scene2_dialogue,
 )
 
-add_shot("scene_002", 1, 2, 1, ["char_su_wanwan"], "苏氏公馆卧室",
-          "苏晚晚猛然从床上坐起，大口喘息，双手下意识摸向自己完好无损的身体",
-          Emotion.SHOCK, CameraSpec(shot_size=ShotSize.MEDIUM_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.HANDHELD), 2.5)
-add_shot("scene_002", 1, 2, 2, ["char_su_wanwan"], "苏氏公馆卧室",
-          "特写手机锁屏日期定格在三年前订婚宴当天，苏晚晚瞳孔骤缩",
-          Emotion.SURPRISE, CameraSpec(shot_size=ShotSize.EXTREME_CLOSE_UP, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.ZOOM_IN), 2.0,
-          dialogue_ids=["dlg_002_01"])
-add_shot("scene_002", 1, 2, 3, ["char_su_wanwan"], "苏氏公馆卧室",
-          "苏晚晚起身走向梳妆镜，眼神从慌乱迅速转为冷静与杀意",
-          Emotion.DETERMINATION, CameraSpec(shot_size=ShotSize.MEDIUM_CLOSE_UP, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.DOLLY_IN), 3.0,
-          notes="情绪转折点，确立本集人物目标")
+add_shot(
+    "scene_002",
+    1,
+    2,
+    1,
+    ["char_su_wanwan"],
+    "苏氏公馆卧室",
+    "苏晚晚猛然从床上坐起，大口喘息，双手下意识摸向自己完好无损的身体",
+    Emotion.SHOCK,
+    CameraSpec(shot_size=ShotSize.MEDIUM_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.HANDHELD),
+    2.5,
+)
+add_shot(
+    "scene_002",
+    1,
+    2,
+    2,
+    ["char_su_wanwan"],
+    "苏氏公馆卧室",
+    "特写手机锁屏日期定格在三年前订婚宴当天，苏晚晚瞳孔骤缩",
+    Emotion.SURPRISE,
+    CameraSpec(shot_size=ShotSize.EXTREME_CLOSE_UP, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.ZOOM_IN),
+    2.0,
+    dialogue_ids=["dlg_002_01"],
+)
+add_shot(
+    "scene_002",
+    1,
+    2,
+    3,
+    ["char_su_wanwan"],
+    "苏氏公馆卧室",
+    "苏晚晚起身走向梳妆镜，眼神从慌乱迅速转为冷静与杀意",
+    Emotion.DETERMINATION,
+    CameraSpec(shot_size=ShotSize.MEDIUM_CLOSE_UP, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.DOLLY_IN),
+    3.0,
+    notes="情绪转折点，确立本集人物目标",
+)
 
 # Scene 3: 宴会厅（三年前）- 提前抵达偶遇陆景琛
 scene3_dialogue = [
@@ -403,20 +491,56 @@ scene3 = Scene(
     dialogue=scene3_dialogue,
 )
 
-add_shot("scene_003", 1, 3, 1, ["char_su_wanwan"], "临江洲际酒店订婚宴会厅",
-          "苏晚晚提前抵达空旷的宴会厅，环视四周布置，神情复杂",
-          Emotion.ANXIETY, CameraSpec(shot_size=ShotSize.LONG_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.TRACKING), 3.0)
-add_shot("scene_003", 1, 3, 2, ["char_su_wanwan"], "临江洲际酒店订婚宴会厅",
-          "苏晚晚站在台阶前，望着三年前坠落的位置低声立誓",
-          Emotion.VENGEFUL, CameraSpec(shot_size=ShotSize.CLOSE_UP, angle=CameraAngle.LOW_ANGLE, movement=CameraMovement.STATIC), 3.5,
-          dialogue_ids=["dlg_003_01"])
-add_shot("scene_003", 1, 3, 3, ["char_lu_jingchen"], "临江洲际酒店订婚宴会厅",
-          "陆景琛从阴影处走出，语气审视地开口询问",
-          Emotion.CALM, CameraSpec(shot_size=ShotSize.MEDIUM_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.STATIC), 3.0,
-          dialogue_ids=["dlg_003_02"])
-add_shot("scene_003", 1, 3, 4, ["char_su_wanwan", "char_lu_jingchen"], "临江洲际酒店订婚宴会厅",
-          "苏晚晚猛然回头，与陆景琛四目相对，空气瞬间凝固",
-          Emotion.SHOCK, CameraSpec(shot_size=ShotSize.TWO_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.ZOOM_IN), 2.5)
+add_shot(
+    "scene_003",
+    1,
+    3,
+    1,
+    ["char_su_wanwan"],
+    "临江洲际酒店订婚宴会厅",
+    "苏晚晚提前抵达空旷的宴会厅，环视四周布置，神情复杂",
+    Emotion.ANXIETY,
+    CameraSpec(shot_size=ShotSize.LONG_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.TRACKING),
+    3.0,
+)
+add_shot(
+    "scene_003",
+    1,
+    3,
+    2,
+    ["char_su_wanwan"],
+    "临江洲际酒店订婚宴会厅",
+    "苏晚晚站在台阶前，望着三年前坠落的位置低声立誓",
+    Emotion.VENGEFUL,
+    CameraSpec(shot_size=ShotSize.CLOSE_UP, angle=CameraAngle.LOW_ANGLE, movement=CameraMovement.STATIC),
+    3.5,
+    dialogue_ids=["dlg_003_01"],
+)
+add_shot(
+    "scene_003",
+    1,
+    3,
+    3,
+    ["char_lu_jingchen"],
+    "临江洲际酒店订婚宴会厅",
+    "陆景琛从阴影处走出，语气审视地开口询问",
+    Emotion.CALM,
+    CameraSpec(shot_size=ShotSize.MEDIUM_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.STATIC),
+    3.0,
+    dialogue_ids=["dlg_003_02"],
+)
+add_shot(
+    "scene_003",
+    1,
+    3,
+    4,
+    ["char_su_wanwan", "char_lu_jingchen"],
+    "临江洲际酒店订婚宴会厅",
+    "苏晚晚猛然回头，与陆景琛四目相对，空气瞬间凝固",
+    Emotion.SHOCK,
+    CameraSpec(shot_size=ShotSize.TWO_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.ZOOM_IN),
+    2.5,
+)
 
 # Scene 4: 宴会厅露台 - 结尾悬念对峙
 scene4_dialogue = [
@@ -447,18 +571,45 @@ scene4 = Scene(
     dialogue=scene4_dialogue,
 )
 
-add_shot("scene_004", 1, 4, 1, ["char_su_wanwan", "char_lu_jingchen"], "宴会厅露台",
-          "苏晚晚快步走向露台想要独处，陆景琛紧随其后拦住去路",
-          Emotion.ANXIETY, CameraSpec(shot_size=ShotSize.MEDIUM_LONG_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.TRACKING), 2.5)
-add_shot("scene_004", 1, 4, 2, ["char_lu_jingchen"], "宴会厅露台",
-          "陆景琛逼近一步，居高临下地质问，夜风吹动他的衣角",
-          Emotion.SHOCK, CameraSpec(shot_size=ShotSize.CLOSE_UP, angle=CameraAngle.LOW_ANGLE, movement=CameraMovement.DOLLY_IN), 3.5,
-          dialogue_ids=["dlg_004_01"],
-          notes="全集结尾悬念台词，需在此处硬切黑屏并叠加下集预告条")
-add_shot("scene_004", 1, 4, 3, ["char_su_wanwan"], "宴会厅露台",
-          "苏晚晚脸色骤白，瞳孔剧烈收缩，画面定格叠加'下集见'字样后硬切黑屏",
-          Emotion.SHOCK, CameraSpec(shot_size=ShotSize.EXTREME_CLOSE_UP, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.ZOOM_IN), 2.0,
-          notes="强悬念收尾镜头，驱动用户点击下一集")
+add_shot(
+    "scene_004",
+    1,
+    4,
+    1,
+    ["char_su_wanwan", "char_lu_jingchen"],
+    "宴会厅露台",
+    "苏晚晚快步走向露台想要独处，陆景琛紧随其后拦住去路",
+    Emotion.ANXIETY,
+    CameraSpec(shot_size=ShotSize.MEDIUM_LONG_SHOT, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.TRACKING),
+    2.5,
+)
+add_shot(
+    "scene_004",
+    1,
+    4,
+    2,
+    ["char_lu_jingchen"],
+    "宴会厅露台",
+    "陆景琛逼近一步，居高临下地质问，夜风吹动他的衣角",
+    Emotion.SHOCK,
+    CameraSpec(shot_size=ShotSize.CLOSE_UP, angle=CameraAngle.LOW_ANGLE, movement=CameraMovement.DOLLY_IN),
+    3.5,
+    dialogue_ids=["dlg_004_01"],
+    notes="全集结尾悬念台词，需在此处硬切黑屏并叠加下集预告条",
+)
+add_shot(
+    "scene_004",
+    1,
+    4,
+    3,
+    ["char_su_wanwan"],
+    "宴会厅露台",
+    "苏晚晚脸色骤白，瞳孔剧烈收缩，画面定格叠加'下集见'字样后硬切黑屏",
+    Emotion.SHOCK,
+    CameraSpec(shot_size=ShotSize.EXTREME_CLOSE_UP, angle=CameraAngle.EYE_LEVEL, movement=CameraMovement.ZOOM_IN),
+    2.0,
+    notes="强悬念收尾镜头，驱动用户点击下一集",
+)
 
 scenes.extend([scene1, scene2, scene3, scene4])
 

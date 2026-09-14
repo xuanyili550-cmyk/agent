@@ -4,6 +4,7 @@ key). Output is adapted to the same {"segments": [{"start","end","text"}]}
 shape that 09_POST/subtitle/subtitle.py's cues_from_whisper_result() expects,
 so ASR output can be burned into subtitles without going through a paid API.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

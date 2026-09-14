@@ -12,19 +12,12 @@ def load_events(path: str | Path) -> pd.DataFrame:
 
 
 def compute_ctr(events: pd.DataFrame) -> pd.DataFrame:
-    counts = (
-        events.groupby(["episode_id", "surface", "event_type"])
-        .size()
-        .unstack(fill_value=0)
-        .reset_index()
-    )
+    counts = events.groupby(["episode_id", "surface", "event_type"]).size().unstack(fill_value=0).reset_index()
     for col in ("impression", "click"):
         if col not in counts.columns:
             counts[col] = 0
     counts["ctr"] = (counts["click"] / counts["impression"].replace(0, pd.NA)).round(4)
-    return counts[["episode_id", "surface", "impression", "click", "ctr"]].sort_values(
-        ["episode_id", "surface"]
-    )
+    return counts[["episode_id", "surface", "impression", "click", "ctr"]].sort_values(["episode_id", "surface"])
 
 
 if __name__ == "__main__":

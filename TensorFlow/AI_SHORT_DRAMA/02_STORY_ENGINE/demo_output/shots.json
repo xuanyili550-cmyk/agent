@@ -97,6 +97,104 @@
         "dlg_shot_001_02_02"
       ],
       "notes": ""
+    },
+    {
+      "id": "shot_002_01_01",
+      "episode": 2,
+      "scene": 1,
+      "shot": 1,
+      "scene_id": "scene_002_01",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "第1场第1个镜头：紧张对峙、暗流涌动的关键演出",
+      "emotion": "determination",
+      "camera": {
+        "shot_size": "close_up",
+        "angle": "eye_level",
+        "movement": "dolly_in",
+        "lens_notes": ""
+      },
+      "duration": 2.5,
+      "dialogue_ids": [
+        "dlg_shot_002_01_01"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "shot_002_01_02",
+      "episode": 2,
+      "scene": 1,
+      "shot": 2,
+      "scene_id": "scene_002_01",
+      "character": [
+        "char_su_wanwan",
+        "char_su_mengyao"
+      ],
+      "location": "临江洲际酒店订婚宴会厅",
+      "action": "第1场第2个镜头：紧张对峙、暗流涌动的关键演出",
+      "emotion": "shock",
+      "camera": {
+        "shot_size": "medium_shot",
+        "angle": "eye_level",
+        "movement": "static",
+        "lens_notes": ""
+      },
+      "duration": 2.5,
+      "dialogue_ids": [
+        "dlg_shot_002_01_02"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "shot_002_02_01",
+      "episode": 2,
+      "scene": 2,
+      "shot": 1,
+      "scene_id": "scene_002_02",
+      "character": [
+        "char_su_wanwan"
+      ],
+      "location": "苏氏公馆卧室",
+      "action": "第2场第1个镜头：震惊、逐渐冷静的决绝的关键演出",
+      "emotion": "determination",
+      "camera": {
+        "shot_size": "close_up",
+        "angle": "eye_level",
+        "movement": "dolly_in",
+        "lens_notes": ""
+      },
+      "duration": 2.5,
+      "dialogue_ids": [
+        "dlg_shot_002_02_01"
+      ],
+      "notes": ""
+    },
+    {
+      "id": "shot_002_02_02",
+      "episode": 2,
+      "scene": 2,
+      "shot": 2,
+      "scene_id": "scene_002_02",
+      "character": [
+        "char_su_wanwan",
+        "char_lu_jingchen"
+      ],
+      "location": "苏氏公馆卧室",
+      "action": "第2场第2个镜头：震惊、逐渐冷静的决绝的关键演出",
+      "emotion": "shock",
+      "camera": {
+        "shot_size": "medium_shot",
+        "angle": "eye_level",
+        "movement": "static",
+        "lens_notes": ""
+      },
+      "duration": 2.5,
+      "dialogue_ids": [
+        "dlg_shot_002_02_02"
+      ],
+      "notes": ""
     }
   ]
 }

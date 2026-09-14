@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,7 @@ class PublishResult:
     dry_run: bool = False
     payload: dict[str, Any] | None = None
     error_message: str | None = None
-    requested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    requested_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class PublishClient(abc.ABC):
@@ -40,14 +40,19 @@ class PublishClient(abc.ABC):
         """Raise PayloadValidationError if payload is malformed. Must not hit the network."""
 
     @abc.abstractmethod
-    def _do_upload(
-        self, episode: EpisodeManifest, payload: dict[str, Any]
-    ) -> PublishResult:
+    def _do_upload(self, episode: EpisodeManifest, payload: dict[str, Any]) -> PublishResult:
         """Perform the real network call. Only invoked when dry_run=False."""
 
-    def upload(
-        self, episode: EpisodeManifest, dry_run: bool = False
-    ) -> PublishResult:
+    def fetch_status(self, remote_id: str) -> tuple[PublishStatus, str | None, str | None]:
+        """查询已提交内容在平台侧的处理状态：(status, remote_url, error_message)。
+
+        上传成功不等于发布成功（YouTube 要转码、TikTok 要审核），13_INFRA 的
+        publish_status_task 会周期性调这个方法把最终状态回写到 manifest 和数据库。
+        没有状态接口的平台保持默认实现：返回 PENDING 表示"无法确认"。
+        """
+        return PublishStatus.PENDING, None, "platform does not expose a status endpoint"
+
+    def upload(self, episode: EpisodeManifest, dry_run: bool = False) -> PublishResult:
         payload = self.build_payload(episode)
         self.validate_payload(payload)
         if dry_run:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from typing import Optional
 
 DEFAULT_CLIP_MODEL = "openai/clip-vit-base-patch32"
 
@@ -31,10 +30,7 @@ class CLIPBackend:
             try:
                 from transformers import CLIPModel, CLIPProcessor
             except ImportError as exc:
-                raise CLIPModelUnavailableError(
-                    "transformers is not installed. Install it with "
-                    "`pip install -r 08_QC/requirements-qc.txt`."
-                ) from exc
+                raise CLIPModelUnavailableError("transformers is not installed. Install it with `pip install -r 08_QC/requirements-qc.txt`.") from exc
             try:
                 model = CLIPModel.from_pretrained(model_name)
                 processor = CLIPProcessor.from_pretrained(model_name)

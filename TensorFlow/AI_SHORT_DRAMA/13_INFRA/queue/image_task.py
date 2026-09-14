@@ -1,37 +1,48 @@
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 from typing import Any, Dict
 
+from ..config import get_settings
+from ..database import repository as repo
+from ..database.session import session_scope
 from ..workers.celery_app import celery_app
+from ._common import mod
+from .shot_task import resolve_character_assets
 
 __all__ = ["image_task"]
 
 
 @celery_app.task(name="image_task", bind=True)
 def image_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Image-generation GPU queue task.
+    """单张图像生成任务（不带 QC 与重试阶梯；带这些的镜头生产走 shot_task）。
 
-    Expected payload: {"prompt": str, "negative_prompt": str | None,
-      "character_id": str | None, "episode_id": str | None, "shot_id": str | None,
-      "seed": int | None, "model": str | None (a diffusers model id/path; omit or
-      pass "dummy" to use the offline DummyImageGenerator), "width": int,
-      "height": int, "output_dir": str | None, "license": str | None}.
-    Expected return: {"file_path": str, "model": str, "seed": int | None, "asset_id": str}.
+    payload: {"prompt": str, "negative_prompt": str | None, "character_id": str | None,
+      "reference_character_ids": list[str] | None, "reference_images": list[str] | None,
+      "lora_path": str | None, "episode_id": str | None, "shot_id": str | None, "seed": int | None,
+      "model": str | None (diffusers 模型 id/路径；不传或 "dummy" 用离线 DummyImageGenerator),
+      "width": int, "height": int, "output_dir": str | None, "license": str | None}
+    返回: {"file_path": str, "model": str, "seed": int | None, "asset_id": str}
 
-    Calls the real 07_GENERATION.image.image_generator classes -- DiffusersImageGenerator
-    when payload["model"] names a real model id/path, DummyImageGenerator otherwise -- and
-    appends an AssetRecord via 07_GENERATION.asset_registry, mirroring 07_GENERATION/demo.py.
+    角色一致性：reference_character_ids 会去 characters 表 / 06_MODELS/character_loras.json 查
+    参考图和 LoRA，传给 DiffusersImageGenerator 的 IP-Adapter / LoRA；payload 里显式给的优先。
+    AssetRecord 同时写 jsonl（07 的本地账本）和 assets 表。
     """
-    image_generator_mod = importlib.import_module("07_GENERATION.image.image_generator")
-    asset_registry = importlib.import_module("07_GENERATION.asset_registry")
+    settings = get_settings()
+    image_generator_mod = mod("07_GENERATION.image.image_generator")
+    asset_registry = mod("07_GENERATION.asset_registry")
 
-    model = payload.get("model")
+    model = payload.get("model") or settings.image_backend
     if model and model != "dummy":
         generator = image_generator_mod.DiffusersImageGenerator(model_id_or_path=model)
     else:
         generator = image_generator_mod.DummyImageGenerator()
+
+    character_ids = list(payload.get("reference_character_ids") or ([payload["character_id"]] if payload.get("character_id") else []))
+    with session_scope() as db:
+        assets = resolve_character_assets(character_ids, db, project_id=payload.get("project_id"))
+    reference_images = payload.get("reference_images") or assets["reference_images"] or None
+    lora_path = payload.get("lora_path") or assets["lora_path"]
 
     seed = payload.get("seed")
     image = generator.generate(
@@ -40,9 +51,11 @@ def image_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         seed=seed,
         width=payload.get("width", 1024),
         height=payload.get("height", 1024),
+        lora_path=lora_path,
+        reference_images=reference_images,
     )
 
-    output_dir = Path(payload.get("output_dir") or "./outputs/images")
+    output_dir = Path(payload.get("output_dir") or settings.artifacts_root / "images")
     output_dir.mkdir(parents=True, exist_ok=True)
     asset_id = asset_registry.new_asset_id("img")
     file_name = f"{payload.get('shot_id') or asset_id}.png"
@@ -52,7 +65,7 @@ def image_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
     record = asset_registry.AssetRecord(
         asset_id=asset_id,
         file_path=str(file_path),
-        character_id=payload.get("character_id"),
+        character_id=payload.get("character_id") or (character_ids[0] if character_ids else None),
         episode_id=payload.get("episode_id"),
         shot_id=payload.get("shot_id"),
         model=model or "dummy-placeholder-generator",
@@ -63,5 +76,14 @@ def image_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
     )
     asset_log_path = payload.get("asset_log_path") or str(output_dir.parent / "asset_records.jsonl")
     asset_registry.write_asset_record(record, asset_log_path)
+    with session_scope() as db:
+        repo.persist_asset(db, record, kind="image", width=payload.get("width", 1024), height=payload.get("height", 1024))
 
-    return {"file_path": str(file_path), "model": record.model, "seed": seed, "asset_id": asset_id}
+    return {
+        "file_path": str(file_path),
+        "model": record.model,
+        "seed": seed,
+        "asset_id": asset_id,
+        "reference_images": len(reference_images or []),
+        "lora_path": lora_path,
+    }

@@ -1,0 +1,16 @@
+.venv*/
+venv*/
+__pycache__/
+*.pyc
+*.db
+*.sqlite3
+artifacts/
+storage_data/
+outputs/
+**/demo_output/conversations/
+**/demo_outputs/
+05_TRAINING/**/out/
+.git/
+.idea/
+.env
+tests/

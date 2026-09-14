@@ -49,9 +49,7 @@ class YouTubePublishClient(PublishClient):
         category_id: str = "24",
         privacy_status: str = "public",
     ) -> None:
-        self.client_secrets_path = client_secrets_path or os.environ.get(
-            "YOUTUBE_CLIENT_SECRETS_PATH", ""
-        )
+        self.client_secrets_path = client_secrets_path or os.environ.get("YOUTUBE_CLIENT_SECRETS_PATH", "")
         self.token_path = token_path or os.environ.get(
             "YOUTUBE_TOKEN_PATH",
             str(Path.home() / ".config" / "ai_short_drama" / "youtube_token.json"),
@@ -65,11 +63,7 @@ class YouTubePublishClient(PublishClient):
             "video_path": episode.video_path,
             "snippet": {
                 "title": episode.title[:100],
-                "description": (
-                    f"{episode.title}\n\n"
-                    f"Episode {episode.episode_number} of series {episode.series_id}.\n"
-                    f"#shorts #shortdrama"
-                )[:5000],
+                "description": (f"{episode.title}\n\nEpisode {episode.episode_number} of series {episode.series_id}.\n#shorts #shortdrama")[:5000],
                 "tags": [episode.series_id, "shortdrama", "shorts"],
                 "categoryId": self.category_id,
             },
@@ -88,37 +82,24 @@ class YouTubePublishClient(PublishClient):
             raise PayloadValidationError("youtube title exceeds 100 characters")
         status = payload.get("status", {})
         if status.get("privacyStatus") not in VALID_PRIVACY_STATUSES:
-            raise PayloadValidationError(
-                f"invalid privacyStatus, must be one of {VALID_PRIVACY_STATUSES}"
-            )
+            raise PayloadValidationError(f"invalid privacyStatus, must be one of {VALID_PRIVACY_STATUSES}")
         if not payload.get("video_path"):
             raise PayloadValidationError("youtube payload missing video_path")
 
     def _get_credentials(self) -> Any:
         if not GOOGLE_LIBS_AVAILABLE:
-            raise RuntimeError(
-                "google-api-python-client / google-auth-oauthlib not installed"
-            )
+            raise RuntimeError("google-api-python-client / google-auth-oauthlib not installed")
         creds = None
         token_file = Path(self.token_path)
         if token_file.exists():
-            creds = Credentials.from_authorized_user_file(
-                str(token_file), [YOUTUBE_UPLOAD_SCOPE]
-            )
+            creds = Credentials.from_authorized_user_file(str(token_file), [YOUTUBE_UPLOAD_SCOPE])
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(GoogleAuthRequest())
             else:
-                if not self.client_secrets_path or not Path(
-                    self.client_secrets_path
-                ).exists():
-                    raise RuntimeError(
-                        "YOUTUBE_CLIENT_SECRETS_PATH is not set or file does not "
-                        "exist; cannot run the OAuth consent flow"
-                    )
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    self.client_secrets_path, [YOUTUBE_UPLOAD_SCOPE]
-                )
+                if not self.client_secrets_path or not Path(self.client_secrets_path).exists():
+                    raise RuntimeError("YOUTUBE_CLIENT_SECRETS_PATH is not set or file does not exist; cannot run the OAuth consent flow")
+                flow = InstalledAppFlow.from_client_secrets_file(self.client_secrets_path, [YOUTUBE_UPLOAD_SCOPE])
                 creds = flow.run_local_server(port=0)
             token_file.parent.mkdir(parents=True, exist_ok=True)
             token_file.write_text(creds.to_json(), encoding="utf-8")
@@ -127,31 +108,45 @@ class YouTubePublishClient(PublishClient):
     def _get_service(self) -> Any:
         if self._service is None:
             creds = self._get_credentials()
-            self._service = build(
-                YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, credentials=creds
-            )
+            self._service = build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, credentials=creds)
         return self._service
 
-    def _do_upload(
-        self, episode: EpisodeManifest, payload: dict[str, Any]
-    ) -> PublishResult:
+    def fetch_status(self, remote_id: str) -> tuple[PublishStatus, str | None, str | None]:
+        """videos.list(part=status,processingDetails)：uploadStatus=processed 且不是 rejected 才算发布完成。"""
+        service = self._get_service()
+        try:
+            response = service.videos().list(part="status,processingDetails", id=remote_id).execute()
+        except HttpError as exc:
+            return PublishStatus.FAILED, None, str(exc)
+        items = response.get("items", [])
+        if not items:
+            return PublishStatus.FAILED, None, f"video {remote_id} not found"
+        status = items[0].get("status", {})
+        upload_status = status.get("uploadStatus")
+        url = f"https://www.youtube.com/watch?v={remote_id}"
+        if upload_status == "rejected":
+            return PublishStatus.REJECTED, url, status.get("rejectionReason")
+        if upload_status == "failed":
+            return PublishStatus.FAILED, url, status.get("failureReason")
+        if upload_status == "processed":
+            return PublishStatus.PUBLISHED, url, None
+        return PublishStatus.IN_REVIEW, url, None  # uploaded / processing
+
+    def _do_upload(self, episode: EpisodeManifest, payload: dict[str, Any]) -> PublishResult:
         service = self._get_service()
         body = {"snippet": payload["snippet"], "status": payload["status"]}
-        media = MediaFileUpload(
-            payload["video_path"], chunksize=-1, resumable=True, mimetype="video/mp4"
-        )
-        request = service.videos().insert(
-            part="snippet,status", body=body, media_body=media
-        )
+        media = MediaFileUpload(payload["video_path"], chunksize=-1, resumable=True, mimetype="video/mp4")
+        request = service.videos().insert(part="snippet,status", body=body, media_body=media)
         try:
             response = None
             while response is None:
                 _status, response = request.next_chunk()
             video_id = response["id"]
+            # 上传完成 != 发布完成：YouTube 还要转码/审核，先记 IN_REVIEW，由 fetch_status 轮询确认
             return PublishResult(
                 platform=self.platform_name,
                 episode_id=episode.episode_id,
-                status=PublishStatus.PUBLISHED,
+                status=PublishStatus.IN_REVIEW,
                 remote_id=video_id,
                 remote_url=f"https://www.youtube.com/watch?v={video_id}",
                 payload=payload,

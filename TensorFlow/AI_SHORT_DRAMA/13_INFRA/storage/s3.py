@@ -28,10 +28,7 @@ class S3StorageAdapter(StorageAdapter):
         try:
             import boto3
         except ImportError as exc:
-            raise RuntimeError(
-                "boto3 is required for S3StorageAdapter. Install it with "
-                "`pip install -r 13_INFRA/requirements-infra.txt`."
-            ) from exc
+            raise RuntimeError("boto3 is required for S3StorageAdapter. Install it with `pip install -r 13_INFRA/requirements-infra.txt`.") from exc
 
         self.bucket = bucket
         self._client = boto3.client(

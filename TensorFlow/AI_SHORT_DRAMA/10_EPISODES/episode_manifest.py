@@ -35,9 +35,7 @@ class EpisodeManifest(BaseModel):
     subtitle_path: str | None = None
     shot_ids: list[str] = Field(default_factory=list)
     qc_report_ref: str | None = None
-    publish_status_per_platform: dict[str, PlatformPublishStatus] = Field(
-        default_factory=dict
-    )
+    publish_status_per_platform: dict[str, PlatformPublishStatus] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime | None = None
     language: str = "en"
@@ -53,13 +51,11 @@ class EpisodeManifest(BaseModel):
         return v
 
     @classmethod
-    def load(cls, path: str | Path) -> "EpisodeManifest":
+    def load(cls, path: str | Path) -> EpisodeManifest:
         return cls.model_validate_json(Path(path).read_text(encoding="utf-8"))
 
     def save(self, path: str | Path) -> None:
-        Path(path).write_text(
-            self.model_dump_json(indent=2, exclude_none=False), encoding="utf-8"
-        )
+        Path(path).write_text(self.model_dump_json(indent=2, exclude_none=False), encoding="utf-8")
 
 
 if __name__ == "__main__":

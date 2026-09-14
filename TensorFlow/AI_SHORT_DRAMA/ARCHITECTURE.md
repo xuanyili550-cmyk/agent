@@ -115,6 +115,58 @@ payload -> 调用对应 Provider -> 存文件 -> 写 AssetRecord -> 返回结果
 不能只看历史本身；② 裁剪要按 user/assistant **成对**丢，Anthropic API 要求消息严格交替
 且以 user 开头，丢单条会直接报 400。
 
+### 2.8 编审是流水线的一部分：质检官 + 总编审 + 人工审核三道门
+
+`02_STORY_ENGINE/agents/qc_officer_agent.py`（质检官）先用纯代码做硬校验（引用闭合、时长
+范围、钩子/悬念非空，零成本），再让 LLM 按 7 条清单做语义检查（人物是否走形、钩子够不够强），
+输出 `QCVerdict`；`chief_editor_agent.py`（总编审）拿着质检报告做最终决定 `EditorialDecision`
+（approve / revise / reject）。revise 时 `required_changes` 回灌给编剧在上一版基础上改，最多
+N 轮；reject 或轮次用尽的集不做分镜，流水线停在 `awaiting_review` 等人。
+`章节规划师`（`chapter_planner_agent.py`）用 LLM 出 SeasonArc，但集 id 分配错了就用规则版兜底。
+
+**为什么**：LLM 生成的剧本"每个字段都合法"不等于"能拍"。把审校做成 Agent 节点而不是靠人肉
+读 JSON，一是便宜（一次质检调用比一次生成便宜得多，且硬校验发现 blocker 就不再花 LLM），
+二是判定结果结构化后可以驱动自动修订。但**AI 编审不能替代人**：默认 `REQUIRE_HUMAN_REVIEW=true`，
+AI 通过只是把集标成"可放行"，真正进入生产要等 `POST /pipelines/{run_id}/approve`；
+质检报告里有 blocker 时代码层面禁止总编审 approve，不指望 prompt 每次都被遵守。
+
+### 2.9 生成失败走三级重试阶梯，而不是"失败就报错"
+
+`07_GENERATION/retry_ladder.py` 是纯逻辑：一次镜头生成失败或 QC 不过后，按
+**同样参数再试一次（换 seed）-> 让 AI 改写提示词再试 -> 降分辨率再试（1080p->720p->540p）**
+升级；失败类型决定起点（网络/限流从第 1 级，QC 不过/prompt 被拒直接第 2 级，显存不足直接第 3 级）。
+`13_INFRA/queue/shot_task.py` 执行阶梯，每次尝试都留 Asset + QCReport 可追溯；阶梯用尽的镜头
+返回 `failed` 而**不抛异常**，chord 里其它镜头照常出片，失败镜头记进 `PipelineRun.result`
+供人补生成后 `rerender`。任务层的瞬时错误（`BaseTask.autoretry_for`）是这套阶梯的第 1 级在
+Celery 侧的对应。
+
+**为什么**：GPU 生成一次几十秒到几分钟，一整集几十个镜头，"一个镜头崩就整集失败"在生产上
+不可接受；而大多数失败又确实是换个 seed / 换个说法 / 降一档就能过的。分辨率降档是最后的
+兜底——720p 的成片总比没有成片强，人工可以只补那一个镜头。
+
+### 2.10 数据库只存"主键 + 索引列 + JSON 全量对象"，主键带项目前缀
+
+`13_INFRA/database/models.py` 的业务表（story_bibles / characters / episodes / scenes / shots /
+prompts）只保留主键、外键、少数筛选列，完整对象原样存在 `data` JSON 列，读回来用
+`schemas.X.model_validate(row.data)`；`repository.py` 是唯一的读写入口。主键 =
+`<project_id>__<业务 id>`（`repository.scoped_id`），`data` 里保留原始业务 id。
+
+**为什么**：之前数据库自己定义了一套字段不同的 Shot/Character 表，和 03 的权威 schema 互不相通，
+违反了 2.2 自己定的规则。JSON 列让 schema 加字段不用改表；主键加前缀是因为 LLM 按 prompt 要求
+生成的 id（`ep_001`、`shot_001_01_02`）在每个项目里都从头编号，直接当主键两个项目会互相覆盖——
+这个 bug 是端到端测试跑第二个项目时才暴露的。
+
+### 2.11 可靠性与可观测性是横切能力，做在基类/中间件里而不是每个任务里
+
+`13_INFRA/queue/base_task.py::BaseTask`：瞬时错误自动指数退避重试、`acks_late`、指标、
+task_id 进日志上下文，所有任务 `@celery_app.task` 自动继承。`13_INFRA/api/middleware.py`：
+request_id、访问日志、Prometheus、限流。`13_INFRA/config.py`：唯一的配置入口。
+会话记忆的读-改-写用 `ConversationStore.lock()`（Redis Lock / fcntl）串行化。
+
+**为什么**：这些东西每个任务各写一遍必然写漏（之前 6 个任务没有一个有重试和超时）。
+放在基类/中间件里，新加一个任务天然就有；而且"忘了配鉴权"这类问题应该是显性故障——
+`API_KEYS` 没配时接口返回 503，而不是静默放行。
+
 ## 3. 分层职责一览
 
 | 层 | 输入 | 输出 | 不该做的事 |
@@ -131,7 +183,7 @@ payload -> 调用对应 Provider -> 存文件 -> 写 AssetRecord -> 返回结果
 | 10_EPISODES | 09 的产物 | episode_manifest.json | 不该包含渲染逻辑，只是清单 |
 | 11_PUBLISH | 10 的 manifest | 发布结果 | 不该包含内容生成/剪辑逻辑 |
 | 12_ANALYTICS | 平台回传的数据 | 留存/CTR/收入报表 | 不该反向修改内容生产流程（那是人看报表后自己决定） |
-| 13_INFRA | 横切 | API/DB/队列/存储 | 不该包含任何具体的业务判断逻辑（生成质量好坏、发布策略等） |
+| 13_INFRA | 横切 | API/DB/队列/存储/编排/配置/可观测性 | 不该包含具体的业务判断逻辑（质量好坏由 08 判、编审由 02 的 Agent 判），它只负责把判定结果变成流程分支 |
 
 ## 4. 技术选型速查（详细版本号见各目录 requirements）
 
@@ -143,6 +195,9 @@ payload -> 调用对应 Provider -> 存文件 -> 写 AssetRecord -> 返回结果
 | 免费图片生成 | Diffusers（SDXL/FLUX） | 本地跑，无需付费 API |
 | 后端 | FastAPI + PostgreSQL + Redis + Celery | 标准的"API + 关系数据库 + 任务队列"组合，GPU worker 天然适合用队列削峰 |
 | 后期合成 | FFmpeg（subprocess 调用，不引入额外剪辑框架） | 命令行工具足够稳定，不需要为剪辑单独造轮子 |
+| 配置 | pydantic-settings | 类型、默认值、校验集中一处，`<NAME>_FILE` 读密钥文件 |
+| 可观测性 | 标准库 logging（JSON 格式）+ prometheus_client | 不引入 APM 依赖，Loki/Prometheus/Grafana 直接吃 |
+| 迁移 | Alembic | 表结构变更可回滚，CI 验证从零迁移 |
 
 ## 5. 手写时最容易踩的坑（这套参考实现真实踩过的）
 
@@ -158,6 +213,14 @@ payload -> 调用对应 Provider -> 存文件 -> 写 AssetRecord -> 返回结果
 4. **数字开头的目录名不能被 `import` 语句直接引用**——用 `importlib.import_module`
    带完整点号路径，不要图省事把子目录塞进 `sys.path` 再裸 import（这样多个同名
    文件会互相覆盖，比如这个项目里就有两个 `schemas.py`）。
+5. **同一个模块以两种名字被 import 就是两份对象**——`from errors import X`（sys.path）和
+   `importlib.import_module("07_GENERATION.errors")` 得到两个不同的 `X` 类，`except X`
+   捕获不到对方抛的异常，pydantic 也会判 `Shot` 不是 `Shot`。这套实现的解法是在
+   `errors.py` / `schemas.py` 等模块末尾把自己注册到 `sys.modules` 的两个名字下。
+6. **LLM 生成的 id 不能直接当数据库主键**——每个项目都会从 `ep_001` 编起，必须加项目
+   前缀（见 2.10）。这个 bug 单跑一个项目永远发现不了，第二个项目一进来就互相覆盖。
+7. **本机 ffmpeg 和容器里的 ffmpeg 不一样**——Homebrew 版没有 libass，`subtitles` 滤镜
+   不存在。渲染要能降级（SRT 旁路文件）而不是整条流水线失败。
 5. **许可证信息不要凭记忆断言**——写模型注册表时，能查的（Hugging Face Hub API
    的 `license` 标签）就去查，查不到的老实写"需要自行核实"，不要为了看起来完整
    就编一个听起来合理的许可证名字。

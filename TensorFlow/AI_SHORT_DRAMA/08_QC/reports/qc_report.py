@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -44,7 +44,7 @@ class QCReport(BaseModel):
     asset_id: Optional[str] = None
     shot_id: Optional[str] = None
     episode_id: Optional[str] = None
-    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     character: Optional[QCItemScore] = None
     scene: Optional[QCItemScore] = None
     video: Optional[QCItemScore] = None
@@ -71,9 +71,7 @@ def _character_item(result, threshold: float) -> QCItemScore:
         score=result.similarity,
         threshold=threshold,
         passed=passed,
-        detail=None if passed else (
-            f"character similarity {result.similarity:.3f} below threshold {threshold:.3f}"
-        ),
+        detail=None if passed else (f"character similarity {result.similarity:.3f} below threshold {threshold:.3f}"),
     )
 
 
@@ -84,9 +82,7 @@ def _scene_item(result, threshold: float) -> QCItemScore:
         score=result.similarity,
         threshold=threshold,
         passed=passed,
-        detail=None if passed else (
-            f"scene alignment {result.similarity:.3f} below threshold {threshold:.3f}"
-        ),
+        detail=None if passed else (f"scene alignment {result.similarity:.3f} below threshold {threshold:.3f}"),
     )
 
 
@@ -219,9 +215,7 @@ def run_full_qc(
         from ..character.consistency_checker import CharacterConsistencyChecker
 
         checker = CharacterConsistencyChecker()
-        character_result = checker.score(
-            reference_character_image, generated_image, character_id=character_id
-        )
+        character_result = checker.score(reference_character_image, generated_image, character_id=character_id)
 
     if scene_description is not None and scene_media_image is not None:
         from ..scene.scene_qc import SceneQC

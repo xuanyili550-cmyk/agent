@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,11 +8,28 @@ from typing import Any, Dict, List, Union
 
 __all__ = [
     "SubtitleCue",
+    "SubtitleBurnUnavailable",
     "burn_subtitles",
     "cues_from_dialogue_json",
     "cues_from_whisper_result",
+    "ffmpeg_has_filter",
     "write_srt",
 ]
+
+
+class SubtitleBurnUnavailable(RuntimeError):
+    """本机 ffmpeg 没有编译 libass（subtitles 滤镜）：无法硬烧字幕，只能输出 SRT 旁路文件。
+    Homebrew 默认的 ffmpeg 就是这样；Docker 镜像里 apt 装的 ffmpeg 带 libass。"""
+
+
+@functools.cache
+def ffmpeg_has_filter(name: str) -> bool:
+    try:
+        result = subprocess.run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, text=True)
+    except FileNotFoundError:
+        return False
+    return any(line.split()[1:2] == [name] for line in result.stdout.splitlines() if line.strip())
+
 
 PathLike = Union[str, Path]
 
@@ -113,18 +131,24 @@ def burn_subtitles(
         raise FileNotFoundError(f"Video not found: {video_path}")
     if not srt_path.exists():
         raise FileNotFoundError(f"SRT file not found: {srt_path}")
+    if not ffmpeg_has_filter("subtitles"):
+        raise SubtitleBurnUnavailable("ffmpeg 缺少 subtitles 滤镜（libass），无法硬烧字幕")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     style = (
-        f"FontSize={font_size},PrimaryColour=&H{_bgr_hex(font_color)}&,"
-        f"OutlineColour=&H{_bgr_hex(outline_color)}&,BorderStyle=1,Outline=2,MarginV={margin_v}"
+        f"FontSize={font_size},PrimaryColour=&H{_bgr_hex(font_color)}&,OutlineColour=&H{_bgr_hex(outline_color)}&,BorderStyle=1,Outline=2,MarginV={margin_v}"
     )
     subtitles_arg = f"subtitles=filename='{_escape_filter_path(srt_path)}':force_style='{style}'"
 
     cmd = [
-        "ffmpeg", "-y", "-i", str(video_path),
-        "-vf", subtitles_arg,
-        "-c:a", "copy",
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(video_path),
+        "-vf",
+        subtitles_arg,
+        "-c:a",
+        "copy",
         str(output_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)

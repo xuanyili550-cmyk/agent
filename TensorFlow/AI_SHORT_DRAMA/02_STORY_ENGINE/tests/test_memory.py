@@ -4,6 +4,7 @@
 summarize 压缩策略、文件存储跨实例持久化、BaseAgent 只记录成功轮次、Celery llm_task 按
 context_id 续接历史。全程不需要 API key，不下载模型。
 """
+
 from __future__ import annotations
 
 import importlib
@@ -27,7 +28,6 @@ from agents.memory import (  # noqa: E402
     context_window_for,
     estimate_tokens,
 )
-
 
 # ---- 工具 ----------------------------------------------------------------------------
 
@@ -96,7 +96,7 @@ def test_window_drops_oldest_pairs_only_when_over_budget_and_keeps_store_intact(
     _fill(memory, 6)
     window = memory.window("", "")
     assert len(window) % 2 == 0 and window[0]["role"] == "user"
-    assert window == memory.messages[-len(window):]
+    assert window == memory.messages[-len(window) :]
     assert len(window) < len(memory.messages)
     assert sum(estimate_tokens(m["content"]) for m in window) <= 300
     # 落盘的完整历史一条不少
@@ -207,9 +207,10 @@ def test_llm_task_continues_conversation_by_context_id(tmp_path, monkeypatch):
     monkeypatch.delenv("LLM_CONTEXT_REDIS_URL", raising=False)
 
     llm_task_mod = importlib.import_module("13_INFRA.queue.llm_task")
-    base_mod = importlib.import_module("02_STORY_ENGINE.agents.base")
     provider = EchoProvider(replies=["Berlin.", "Paris.", "stateless"])
-    monkeypatch.setattr(base_mod, "LocalTransformersProvider", lambda model_id: provider)
+    # provider 与历史存储都由 settings 决定；测试里直接替换工厂函数
+    monkeypatch.setattr(llm_task_mod, "build_llm_provider", lambda settings: provider)
+    monkeypatch.setattr(llm_task_mod, "build_conversation_store", lambda settings: FileConversationStore(tmp_path))
 
     r1 = llm_task_mod.llm_task.apply(args=[{"prompt": "德国首都？", "context_id": "chat-1"}]).get()
     r2 = llm_task_mod.llm_task.apply(args=[{"prompt": "法国呢？", "context_id": "chat-1"}]).get()

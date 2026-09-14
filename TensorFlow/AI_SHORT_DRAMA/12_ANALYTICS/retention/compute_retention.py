@@ -16,9 +16,7 @@ def load_events(path: str | Path) -> pd.DataFrame:
     return df
 
 
-def compute_retention(
-    events: pd.DataFrame, retention_days: tuple[int, ...] = DEFAULT_RETENTION_DAYS
-) -> pd.DataFrame:
+def compute_retention(events: pd.DataFrame, retention_days: tuple[int, ...] = DEFAULT_RETENTION_DAYS) -> pd.DataFrame:
     cohort_date = events.groupby("user_id")["event_date"].min().rename("cohort_date")
     activity_dates = events.groupby("user_id")["event_date"].apply(set)
 

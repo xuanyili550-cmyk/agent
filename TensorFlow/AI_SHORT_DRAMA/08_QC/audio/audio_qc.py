@@ -69,10 +69,7 @@ class AudioQC:
         try:
             audio = AudioSegment.from_file(path)
         except Exception as exc:
-            raise RuntimeError(
-                f"Could not decode audio file {path} (requires ffmpeg on PATH). "
-                f"Underlying error: {exc}"
-            ) from exc
+            raise RuntimeError(f"Could not decode audio file {path} (requires ffmpeg on PATH). Underlying error: {exc}") from exc
 
         duration_sec = len(audio) / 1000.0
         loudness_dbfs = audio.dBFS if audio.dBFS != float("-inf") else -120.0
@@ -84,18 +81,12 @@ class AudioQC:
             min_silence_len=self.min_silence_len_ms,
             silence_thresh=self.silence_threshold_dbfs,
         )
-        segments = [
-            SilenceSegment(start_sec=start_ms / 1000.0, end_sec=end_ms / 1000.0)
-            for start_ms, end_ms in raw_silences
-        ]
+        segments = [SilenceSegment(start_sec=start_ms / 1000.0, end_sec=end_ms / 1000.0) for start_ms, end_ms in raw_silences]
         total_silence_sec = sum(s.duration_sec for s in segments)
         silence_ratio = (total_silence_sec / duration_sec) if duration_sec > 0 else 1.0
         longest_silence = max((s.duration_sec for s in segments), default=0.0)
 
-        silence_ok = (
-            silence_ratio <= self.max_total_silence_ratio
-            and longest_silence <= self.max_single_silence_sec
-        )
+        silence_ok = silence_ratio <= self.max_total_silence_ratio and longest_silence <= self.max_single_silence_sec
 
         return AudioQCResult(
             audio_path=str(path),

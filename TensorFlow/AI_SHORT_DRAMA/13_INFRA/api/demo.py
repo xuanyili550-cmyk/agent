@@ -4,6 +4,7 @@ Postgres/Redis: SQLite in-memory for the DB, Celery eager mode (no broker) for t
 Run directly:
     python 13_INFRA/api/demo.py
 """
+
 from __future__ import annotations
 
 import importlib
@@ -18,6 +19,13 @@ os.environ.setdefault("CELERY_BROKER_URL", "memory://")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "cache+memory://")
 os.environ.setdefault("STORAGE_BACKEND", "local")
 os.environ.setdefault("STORAGE_LOCAL_ROOT", tempfile.mkdtemp(prefix="ai_short_drama_storage_"))
+os.environ.setdefault("ARTIFACTS_ROOT", tempfile.mkdtemp(prefix="ai_short_drama_artifacts_"))
+os.environ.setdefault("API_KEYS", "demo-key")
+os.environ.setdefault("LLM_PROVIDER", "mock")
+os.environ.setdefault("QC_BACKEND", "none")
+os.environ.setdefault("METRICS_ENABLED", "false")
+os.environ.setdefault("APP_ENV", "test")
+DEMO_HEADERS = {"X-API-Key": os.environ["API_KEYS"].split(",")[0]}
 
 _project_root = Path(__file__).resolve().parents[2]
 if str(_project_root) not in sys.path:
@@ -31,7 +39,7 @@ def run_demo() -> None:
     models_mod = importlib.import_module("13_INFRA.database.models")
     session_mod = importlib.import_module("13_INFRA.database.session")
 
-    with TestClient(main_mod.app) as client:
+    with TestClient(main_mod.app, headers=DEMO_HEADERS) as client:
         _run_requests(client, models_mod, session_mod)
 
 
@@ -39,6 +47,11 @@ def _run_requests(client, models_mod, session_mod) -> None:
     resp = client.get("/health")
     assert resp.status_code == 200, resp.text
     print("[health]", resp.json())
+
+    # 鉴权：没带 key 一律 401
+    resp = client.get("/projects", headers={"X-API-Key": ""})
+    assert resp.status_code == 401, resp.text
+    print("[auth] missing key -> 401")
 
     resp = client.post("/projects", json={"name": "Demo Project", "description": "smoke test"})
     assert resp.status_code == 201, resp.text
@@ -101,12 +114,21 @@ def _run_requests(client, models_mod, session_mod) -> None:
     asset = resp.json()
     print("[create asset]", asset)
 
-    for path in ("/projects", "/characters", "/episodes", "/shots", "/assets"):
-        resp = client.get(path)
+    created = {
+        "/projects": project["project_id"],
+        "/characters": character["character_id"],
+        "/episodes": episode["episode_id"],
+        "/shots": shot["shot_id"],
+        "/assets": asset["asset_id"],
+    }
+    for path, wanted in created.items():
+        resp = client.get(path, params={"limit": 200, "offset": 0})
         assert resp.status_code == 200, resp.text
         items = resp.json()
-        assert len(items) == 1, f"expected 1 item in {path}, got {items}"
-        print(f"[list {path}]", len(items), "item(s)")
+        key = path.strip("/")[:-1] + "_id"
+        assert any(item[key] == wanted for item in items), f"{wanted} not listed in {path}"
+        assert int(resp.headers["X-Total-Count"]) >= len(items)
+        print(f"[list {path}]", len(items), "item(s), total", resp.headers["X-Total-Count"])
 
     resp = client.get(f"/assets/{asset['asset_id']}")
     assert resp.status_code == 200, resp.text
@@ -115,7 +137,10 @@ def _run_requests(client, models_mod, session_mod) -> None:
     # Task queue round-trip: enqueue an image task. image_task now calls the real
     # 07_GENERATION.image.image_generator.DummyImageGenerator (no credentials/GPU
     # needed), so it succeeds and returns a real placeholder file path.
-    resp = client.post("/tasks", json={"queue": "image", "payload": {"prompt": "a red door"}})
+    resp = client.post("/tasks", json={"queue": "image", "payload": {"prompt": "a red door", "bogus": 1}})
+    assert resp.status_code == 422, resp.text
+    print("[enqueue task] unknown field -> 422")
+    resp = client.post("/tasks", json={"queue": "image", "payload": {"prompt": "a red door", "width": 256, "height": 256}})
     assert resp.status_code == 202, resp.text
     task = resp.json()
     print("[enqueue task]", task)

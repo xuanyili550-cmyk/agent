@@ -1,0 +1,10 @@
+{
+  "_comment": "角色 id -> 角色 LoRA 权重与参考图。由 05_TRAINING/character_lora 训练产出后登记到这里；13_INFRA/queue/shot_task.py 生成镜头时按 reference_character_ids 查表，把 lora_path 和 reference_images 传给图像生成器保证跨镜头长相一致。路径相对 AI_SHORT_DRAMA 根目录；数据库 characters 表里的 lora_path/reference_image_path 优先级高于本文件。",
+  "characters": {
+    "char_su_wanwan": {
+      "lora_path": null,
+      "trigger_word": "suwanwan_v1",
+      "reference_images": ["04_DATASET/images/characters/char_su_wanwan_ref.png"]
+    }
+  }
+}

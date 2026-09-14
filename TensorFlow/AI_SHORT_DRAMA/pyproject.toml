@@ -1,0 +1,36 @@
+[project]
+name = "ai-short-drama"
+version = "0.2.0"
+description = "AI 全链路竖屏短剧生产平台：故事引擎 -> 编审 -> 素材生成/QC -> 后期 -> 发布 -> 分析"
+requires-python = ">=3.11,<3.14"
+# Python 3.14 下 datasets/dill 仍有 pickle 兼容问题（04_DATASET / 05_TRAINING 用到），
+# 其余模块 3.14 可跑；Docker 镜像固定 3.11。
+
+[tool.ruff]
+line-length = 160
+target-version = "py311"
+extend-exclude = [".venv*", "**/demo_output", "**/demo_outputs", "artifacts", "13_INFRA/database/alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E402",  # 各模块开头的 sys.path 引导必须在 import 之前
+    "E731",  # 局部 lambda 起别名（sid = lambda ...）可读性更好
+    "B008",  # FastAPI 的 Depends()/Query() 在参数默认值里是惯例
+    "UP007", "UP035", "UP006", "UP045",  # 保留 Optional/Union 写法，和既有代码风格一致
+    "B904",  # raise ... from exc 在 HTTPException 转换处不需要
+    "UP042",  # class X(str, Enum) 是 pydantic/JSON 序列化的惯用写法，StrEnum 在 3.11 以下不可用
+    "B905",  # zip(strict=) 对既有课程代码不做强制
+    "B024",  # BaseAgent 作为抽象基类只提供模板方法，没有 abstractmethod 是有意的
+    "B007",  # 循环变量未用
+    "B017",  # 测试里 pytest.raises(Exception) 用于"主键冲突"这类跨数据库异常类型不同的场景
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agents", "schemas", "planners", "workflows", "generators"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "02_STORY_ENGINE/tests", "13_INFRA/api"]
+python_files = ["test_*.py"]
+addopts = "-p no:cacheprovider -q"
+filterwarnings = ["ignore::DeprecationWarning"]

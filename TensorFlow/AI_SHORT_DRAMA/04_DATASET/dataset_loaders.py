@@ -5,12 +5,14 @@ the dataset root and cast it to a datasets Image feature. Voice/video
 manifests keep their path columns as plain strings since no real audio/video
 files are shipped with this repo.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
 
-from datasets import Dataset, Image as HFImage, load_dataset
+from datasets import Dataset, load_dataset
+from datasets import Image as HFImage
 
 DATASET_ROOT = Path(__file__).resolve().parent
 DEFAULT_METADATA_DIR = DATASET_ROOT / "metadata"

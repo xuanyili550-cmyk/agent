@@ -8,6 +8,7 @@ instead of running a diffusion pipeline. Run directly:
 
   python demo.py
 """
+
 from __future__ import annotations
 
 import sys
@@ -22,6 +23,7 @@ sys.path.insert(0, str(STRUCTURED_DATA_ROOT))
 
 from asset_registry import AssetRecord, new_asset_id, now_iso, write_asset_record  # noqa: E402
 from image_generator import DummyImageGenerator  # noqa: E402
+
 from schemas import (  # noqa: E402
     CameraAngle,
     CameraMovement,

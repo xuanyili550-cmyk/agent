@@ -8,3 +8,13 @@ __pycache__/
 # Local databases created by running 13_INFRA demos
 *.sqlite3
 *.db
+
+# 生成产物 / 本地运行数据（路径由 ARTIFACTS_ROOT / STORAGE_LOCAL_ROOT 决定）
+artifacts/
+storage_data/
+outputs/
+data/
+.env
+.ruff_cache/
+.pytest_cache/
+**/demo_output/conversations/*.lock

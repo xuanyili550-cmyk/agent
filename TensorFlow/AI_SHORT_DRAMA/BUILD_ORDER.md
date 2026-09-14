@@ -136,6 +136,29 @@ TTS 就因为参数名传错踩了一个坑，实跑才发现。
 - [ ] 训练脚本模板（LoRA/SFT），先跑通脚本本身的参数解析和数据加载逻辑，不追求真的
       跑一次完整训练
 
+## Phase 10：生产化——编排、编审、重试、可靠性、可观测性（参考实现 v0.2 已做）
+
+前面九个阶段跑通的是"每个模块各自能动"；这一阶段把它们变成一个能上线的系统。
+每一项都对应 `ARCHITECTURE.md` 2.8-2.11 的设计决策。
+
+- [ ] 统一配置（pydantic-settings）+ `.env.example`；`API_KEYS` 为空时接口拒绝服务
+- [ ] 数据库打通 03 schema：JSON 全量列 + 项目前缀主键 + Alembic 迁移（CI 里从零 upgrade）
+- [ ] 端到端编排：`chain(story -> gate)`，`chord([shot...] -> render) | manifest | publish`；
+      人工审核门（`awaiting_review` -> approve）
+- [ ] 编审 Agent：质检官（硬校验 + LLM）、总编审（approve/revise/reject）、章节规划师；
+      revise 回灌编剧重写，reject 停给人
+- [ ] 三级重试阶梯：同参数 -> 改写提示词 -> 降分辨率；每次尝试留 Asset + QCReport
+- [ ] 任务基类：瞬时错误指数退避、acks_late、超时；HTTP 调用统一带退避
+- [ ] 会话记忆加锁（Redis Lock / fcntl），token 用量与成本记账
+- [ ] 结构化日志 + Prometheus 指标 + Grafana 面板；API 鉴权、限流、分页、payload 校验
+- [ ] 发布状态轮询回写、平台数据回流分析、SFT 数据集构造与评估脚本
+- [ ] 测试覆盖端到端流程 + 各闭环；ruff；CI；Docker 镜像包含全部模块
+
+**验收**：`make test` 全绿；`POST /pipelines/episodes` -> approve -> `GET /pipelines/{id}`
+status=done，`ffprobe` 成片分辨率/时长正确；故意让 QC 连续失败，`GET /pipelines/{id}`
+里能看到 `attempts` 走完 rewrite_prompt 和 downscale 两级；停掉 Redis 再启动，
+worker 不丢任务。
+
 ## 每阶段之间的自查清单
 
 每完成一个 Phase，问自己三个问题：

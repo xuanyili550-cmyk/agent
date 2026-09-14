@@ -16,6 +16,23 @@
         "char_su_mengyao"
       ],
       "emotional_arc": "绝望死亡 → 震惊重生 → 警惕试探 → 悬念对峙"
+    },
+    {
+      "id": "ep_002",
+      "episode_number": 2,
+      "season_id": "season_001",
+      "title": "交易",
+      "synopsis": "苏晚晚向陆景琛摊牌'重生'一事，以未来三年的商业情报换取他的结盟，苏梦瑶暗中跟踪。",
+      "hook": "开场3秒：陆景琛把一份并购合同拍在桌上——'证明你说的是真的，否则我现在就报警。'",
+      "cliffhanger": "苏梦瑶在门外举起手机，屏幕上是两人密谈的照片，收件人写着'继母'。",
+      "duration_seconds": 300,
+      "scene_ids": [],
+      "characters_featured": [
+        "char_su_wanwan",
+        "char_lu_jingchen",
+        "char_su_mengyao"
+      ],
+      "emotional_arc": "对峙 → 试探 → 结盟 → 被窥视的危机"
     }
   ]
 }

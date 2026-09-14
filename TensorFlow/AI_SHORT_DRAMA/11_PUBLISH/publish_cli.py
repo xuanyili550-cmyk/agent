@@ -18,9 +18,7 @@ from episode_manifest import EpisodeManifest  # type: ignore  # noqa: E402
 def _load_client_module(platform: str):
     # each platform dir has its own client.py; load under a unique module name
     # so they don't collide with each other in sys.modules.
-    spec = importlib.util.spec_from_file_location(
-        f"{platform}_client", PUBLISH_ROOT / platform / "client.py"
-    )
+    spec = importlib.util.spec_from_file_location(f"{platform}_client", PUBLISH_ROOT / platform / "client.py")
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -47,9 +45,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--episode", required=True)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument(
-        "--platform", default="all", help="youtube|tiktok|reelshort|dramabox|goodshort|all"
-    )
+    parser.add_argument("--platform", default="all", help="youtube|tiktok|reelshort|dramabox|goodshort|all")
     args = parser.parse_args()
 
     episode = EpisodeManifest.load(args.episode)
@@ -59,10 +55,7 @@ def main() -> None:
     for name, client in targets.items():
         try:
             result = client.upload(episode, dry_run=args.dry_run)
-            print(
-                f"[{name}] status={result.status.value} dry_run={result.dry_run} "
-                f"payload_keys={list((result.payload or {}).keys())}"
-            )
+            print(f"[{name}] status={result.status.value} dry_run={result.dry_run} payload_keys={list((result.payload or {}).keys())}")
         except Exception as exc:  # noqa: BLE001 - surface adapter/config errors in the CLI
             print(f"[{name}] ERROR: {exc}")
 

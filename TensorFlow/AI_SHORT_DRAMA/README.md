@@ -1,9 +1,86 @@
 # AI_SHORT_DRAMA
 
-一个端到端的 AI 短剧自动化生产流水线草图：故事 -> 结构化数据 -> 训练数据 -> 生成 -> QC ->
-后期 -> 剧集打包 -> 发布 -> 数据分析。项目最初由 4 个并行开发、互相看不到对方代码的 agent
-构建，随后由一个审查 agent 修复了模块间接口不一致的问题；后续又补充了一批"免费开源模型"
-接入。这份 README 记录了哪些接口不一致被修复了、哪些是真实可跑的实现、哪些只是占位。
+一个端到端的 AI 竖屏短剧自动化生产平台：一句创意 -> 故事引擎（8 个 LLM Agent）-> 质检官/总编审
+-> 人工审核 -> 镜头生成（三级自动重试 + QC）-> ffmpeg 成片 -> 剧集 manifest -> 多平台发布 ->
+数据回流分析。项目最初由 4 个并行开发的 agent 搭出各模块骨架，随后经过接口整合、免费开源模型
+接入，最后一轮（v0.2）做了生产化改造：端到端编排、数据库打通、可靠性、可观测性、鉴权、测试与 CI。
+这份 README 记录了平台现状、怎么跑、以及仍然明确不能做到的事。
+
+**快速开始（本机，不需要 Postgres/Redis/GPU/API key）：**
+
+```bash
+pip install -r requirements.txt -r 13_INFRA/requirements-infra.txt
+make test          # 53 个用例：mock LLM + dummy 生成器 + SQLite + eager 队列 + 真实 ffmpeg
+make api           # http://localhost:8000/docs，X-API-Key: dev-key
+curl -X POST localhost:8000/projects -H 'X-API-Key: dev-key' -H 'Content-Type: application/json' -d '{"name":"demo"}'
+curl -X POST localhost:8000/pipelines/episodes -H 'X-API-Key: dev-key' -H 'Content-Type: application/json' \
+  -d '{"project_id":"<上一步返回的 id>","idea":"豪门千金重生复仇，携手冷峻总裁夺回家族企业","episode_numbers":[1,2]}'
+# 返回 run_id；GET /pipelines/{run_id} 看到 awaiting_review 后 POST /pipelines/{run_id}/approve 进入生产
+```
+
+## 平台总览（v0.2 生产化改造）
+
+**一次流水线运行（PipelineRun）经过的阶段：**
+
+```
+POST /pipelines/episodes
+   |
+   v  story_task（llm 队列）
+02 故事引擎 LangGraph：StoryAgent -> 章节规划师(ChapterPlannerAgent) -> CharacterAgent
+   -> [每集] EpisodeAgent(带前情提要) -> ScreenplayAgent -> StoryboardAgent
+   -> 质检官(QCOfficerAgent: 代码硬校验 + LLM 语义检查)
+   -> 总编审(ChiefEditorAgent: approve / revise / reject)
+        revise -> ScreenplayAgent 按 required_changes 重写 -> 重新分镜 -> 再审（最多 N 轮）
+   -> 交叉校验（角色 id / 场次 / 镜头引用闭合）-> PromptAgent 或 jinja 模板出图像/视频 prompt
+   |  全部对象落库（03 schema 原样存 JSON 列，主键带项目前缀）；每次 LLM 调用记 token/成本
+   v  pipeline_gate_task
+REQUIRE_HUMAN_REVIEW=true -> run.status=awaiting_review，等 POST /pipelines/{run_id}/approve
+   |
+   v  start_production：chord([shot_task x N] -> render_task) | manifest_task | publish_task
+每个镜头（image 队列）：解析角色参考图/LoRA -> 生成 -> QC（CLIP 相似度）
+   -> 不过就走三级重试阶梯：同参数换 seed -> AI 改写提示词 -> 降分辨率(1080p->720p->540p)
+   -> 每次尝试都留 Asset + QCReport；阶梯用尽标 failed 但不拖垮其它镜头
+渲染（qc 队列）：09_POST 把通过的关键帧/视频拼成竖屏成片 + SRT 字幕 -> Episode.mp4
+manifest：10_EPISODES/episode_manifest.json（含 QC 报告引用、各平台发布状态）
+发布：11_PUBLISH（PUBLISH_DRY_RUN=true 只校验不发）-> publish_status_task 轮询平台侧状态回写
+```
+
+**主要接口**（全部需要 `X-API-Key`；`/health`、`/metrics` 除外）：
+
+| 接口 | 作用 |
+|---|---|
+| `POST /pipelines/episodes` | 一句创意起一次运行（参数：集数、场次数、prompt_mode、planner、是否 AI 编审……） |
+| `GET /pipelines/{run_id}` | 阶段、编审记录、失败镜头、成片/manifest 路径、错误 |
+| `POST /pipelines/{run_id}/approve` / `reject` / `rerender` | 人工审核放行 / 打回 / 补镜头后重渲染 |
+| `GET /pipelines/{run_id}/usage` | 这次运行的 LLM 调用数、token、估算成本（按 agent 分组） |
+| `GET /episodes/{id}/script`、`POST /episodes/{id}/review` | 审核页面用：剧本 + 质检官/总编审判定；单集放行 |
+| `POST /tasks`（queue=llm/image/shot/video/tts/lipsync/qc/analytics） | 单个任务入队，payload 按队列 Pydantic 校验；`GET /tasks/schemas` 给 JSON Schema |
+| CRUD：`/projects` `/characters` `/episodes` `/shots` `/assets` | 带 `limit/offset` 分页，`X-Total-Count` 响应头 |
+
+**配置**：全部字段在 [`13_INFRA/config.py`](13_INFRA/config.py)（pydantic-settings），示例见
+[`.env.example`](.env.example)。任何字段可用 `<NAME>_FILE=/run/secrets/...` 从文件读取。
+`API_KEYS` 为空时受保护接口返回 503 而不是放行。
+
+**部署**：[`13_INFRA/docker/docker-compose.yml`](13_INFRA/docker/docker-compose.yml)
+= Postgres + Redis + migrate（Alembic）+ api + 六个队列 worker + Prometheus + Grafana。
+Dockerfile 现在拷贝全部模块（之前只拷了 3 个目录，worker 起来就 ImportError），
+`INSTALL_ML=1` 构建参数决定是否装 torch/diffusers。
+
+**可靠性**：所有任务继承 [`BaseTask`](13_INFRA/queue/base_task.py)——瞬时错误
+（网络/429/5xx/`TransientLLMError`/`TransientProviderError`）指数退避自动重试、`acks_late`、
+worker 被杀消息回队；API provider 的 HTTP 调用统一走带退避的
+[`request_with_retry`](07_GENERATION/http_retry.py)；会话历史读-改-写加分布式锁
+（Redis Lock / fcntl）；数据库主键带项目前缀，两个项目的 `ep_001` 不会互相覆盖；
+重跑同一集先清旧分镜（幂等）。
+
+**可观测性**：结构化 JSON 日志（request_id / task_id 贯穿），Prometheus 指标
+（任务耗时/成败、重试阶梯触发、QC 判定、LLM token 与成本、流水线状态），
+`/metrics` + worker 9100 端口，Grafana 面板在 `13_INFRA/monitoring/`。
+
+**测试与 CI**：`tests/` 下 5 个文件 + 原有 2 个，共 53 个用例（`make test`），
+覆盖端到端流水线、三级重试阶梯、编审回灌、会话锁并发、发布状态轮询、分析接入、
+ffmpeg 组装、训练数据集构造；`ruff` 全项目通过；GitHub Actions 见仓库根
+`.github/workflows/ai_short_drama.yml`（lint + 测试 + Alembic 从零迁移 + Docker 构建）。
 
 **如果你想自己动手重写一遍（不是直接用这份参考实现）**，先看
 [`ARCHITECTURE.md`](ARCHITECTURE.md)（为什么要这样分层、核心设计决策）和
@@ -154,7 +231,7 @@ from agents import StoryAgent, CharacterAgent, FileConversationStore, build_memo
 
 memory = build_memory(provider, context_id="project_001", store=FileConversationStore("contexts"))
 story_agent = StoryAgent(provider, memory=memory)
-character_agent = CharacterAgent(provider, memory=memory)   # 共用同一份历史
+character_agent = CharacterAgent(provider, memory=memory)  # 共用同一份历史
 ```
 
 `02_STORY_ENGINE/demo.py` 已经这样接好：历史落在 `02_STORY_ENGINE/demo_output/conversations/`，
@@ -192,6 +269,7 @@ if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
 import importlib
+
 image_generator = importlib.import_module("07_GENERATION.image.image_generator")
 generator = image_generator.DummyImageGenerator()
 ```
@@ -290,6 +368,17 @@ python 12_ANALYTICS/demo.py
 # Celery eager 模式，不需要 Postgres/Redis
 python 13_INFRA/api/demo.py
 # 或者：pytest 13_INFRA/api/test_demo.py
+
+# 全平台端到端（创意 -> 编审 -> 审核 -> 镜头 -> 渲染 -> manifest -> 发布 dry-run）
+pytest tests/test_pipeline_e2e.py
+
+# 05 Training：从故事引擎产出构造 SFT 数据集，并评估一个模型的结构化输出可靠性
+python 05_TRAINING/llm/build_sft_dataset.py --from-demo-output 02_STORY_ENGINE/demo_output --out data/sft.jsonl
+python 05_TRAINING/llm/evaluate_structured_output.py --dataset data/sft.jsonl --provider mock --limit 20
+
+# 本地起 API / worker（见 Makefile）
+make api
+make worker
 ```
 
 ## 整合 4 个 agent 的模块时修复的问题
@@ -398,8 +487,17 @@ bug。
 
 ## 目前已知、这次没有解决的限制
 
+- **需要真实模型/密钥才能验证的部分只做到"代码对照官方 API 核实 + 离线单测"**：
+  Diffusers 的 IP-Adapter/LoRA 角色一致性（`load_ip_adapter`/`set_ip_adapter_scale` 签名
+  已对照本机 diffusers 0.40 核实）、Runway 任务轮询、YouTube/TikTok 状态查询与
+  Analytics 拉取、Claude/GPT 的 token 用量字段——本机没有 GPU/API key，测试里用假 service
+  和 dummy 生成器覆盖了逻辑分支，没有打过真实请求。
+- **本机 Homebrew ffmpeg 没有 libass**：字幕无法硬烧，渲染会自动降级为"成片 + SRT 旁路文件"
+  并打日志；Docker 镜像里 apt 装的 ffmpeg 带 libass，硬烧路径只在容器里生效。
+- `summarize` 压缩策略和 Redis 会话锁只用假 summarizer / 本机临时 redis-server 测过，
+  没有用真实 LLM 跑过长会话压缩。
 - Python 3.14 + `datasets`/`dill` 不兼容（见上文）——需要等上游修复，或者单独用
-  旧版本 Python 的虚拟环境。
+  旧版本 Python 的虚拟环境；`pyproject.toml` 已把 `requires-python` 限制为 `<3.14`。
 - `11_PUBLISH/reelshort`、`dramabox`、`goodshort` 在这几家平台发布公开开发者 API
   之前，没法做成真实对接——不在本次范围内，抓取真实数据/凭证这次也明确排除在外。
 - `07_GENERATION` 里需要付费 API 的 provider（Runway/Pika/ElevenLabs/Sync.so）只

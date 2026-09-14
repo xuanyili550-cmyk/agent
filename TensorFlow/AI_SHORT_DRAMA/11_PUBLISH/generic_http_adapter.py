@@ -27,7 +27,7 @@ class GenericHTTPAdapterConfig:
     payload_template: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "GenericHTTPAdapterConfig":
+    def from_yaml(cls, path: str | Path) -> GenericHTTPAdapterConfig:
         raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
         return cls(
             endpoint=raw["endpoint"],
@@ -80,30 +80,19 @@ class GenericHTTPAdapter(PublishClient):
 
     def validate_payload(self, payload: dict[str, Any]) -> None:
         if not self.config.endpoint or "REPLACE_WITH" in self.config.endpoint:
-            raise PayloadValidationError(
-                f"{self.platform_name}: endpoint is not configured "
-                "(edit config.yaml or set an env var override)"
-            )
+            raise PayloadValidationError(f"{self.platform_name}: endpoint is not configured (edit config.yaml or set an env var override)")
         if not payload:
             raise PayloadValidationError(f"{self.platform_name}: empty payload")
         for key, value in payload.items():
             if isinstance(value, str) and value.startswith("$"):
-                raise PayloadValidationError(
-                    f"{self.platform_name}: unresolved template placeholder "
-                    f"for field '{key}' -> '{value}'"
-                )
+                raise PayloadValidationError(f"{self.platform_name}: unresolved template placeholder for field '{key}' -> '{value}'")
 
-    def _do_upload(
-        self, episode: EpisodeManifest, payload: dict[str, Any]
-    ) -> PublishResult:
+    def _do_upload(self, episode: EpisodeManifest, payload: dict[str, Any]) -> PublishResult:
         headers = dict(self.config.headers)
         if self.config.token_env_var:
             token = os.environ.get(self.config.token_env_var, "")
             if not token:
-                raise RuntimeError(
-                    f"{self.config.token_env_var} is not set; cannot call "
-                    f"{self.platform_name} upload endpoint"
-                )
+                raise RuntimeError(f"{self.config.token_env_var} is not set; cannot call {self.platform_name} upload endpoint")
             headers.setdefault("Authorization", f"Bearer {token}")
 
         resp = requests.request(

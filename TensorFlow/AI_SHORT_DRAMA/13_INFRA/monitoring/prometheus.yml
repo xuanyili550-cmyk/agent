@@ -3,19 +3,24 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  # Requires the FastAPI app to expose a /metrics endpoint, e.g. via
-  # `prometheus-fastapi-instrumentator` (not wired up yet -- add it in 13_INFRA/api/main.py
-  # once request-latency metrics are needed).
+  # FastAPI 进程自己暴露 /metrics（13_INFRA/api/main.py）：HTTP 请求数/耗时、流水线状态变更、
+  # 以及 API 进程内 eager 执行的任务指标。
   - job_name: "api"
+    metrics_path: /metrics
     static_configs:
       - targets: ["api:8000"]
 
-  # Requires each celery worker container to run a `celery-exporter` (or the Flower
-  # /metrics endpoint) sidecar; not included in docker-compose.yml yet, since none of
-  # the GPU worker task bodies (07_GENERATION integration) are implemented yet either.
-  - job_name: "celery"
+  # 每个 Celery worker 容器在 worker_process_init 时起 prometheus_client HTTP server
+  # （端口 WORKER_METRICS_PORT，默认 9100）：任务耗时/成败/重试阶梯/QC 判定/LLM token 与成本。
+  - job_name: "workers"
     static_configs:
-      - targets: ["celery-exporter:9808"]
+      - targets:
+          - "worker_llm:9100"
+          - "worker_image:9100"
+          - "worker_video:9100"
+          - "worker_tts:9100"
+          - "worker_lipsync:9100"
+          - "worker_qc:9100"
 
   - job_name: "redis"
     static_configs:

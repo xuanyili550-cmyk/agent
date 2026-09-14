@@ -78,9 +78,18 @@ def concatenate_clips(
     filter_complex = "".join(filter_parts) + f"{concat_inputs}concat=n={len(timeline)}:v=1:a=1[outv][outa]"
 
     cmd += [
-        "-filter_complex", filter_complex,
-        "-map", "[outv]", "-map", "[outa]",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[outv]",
+        "-map",
+        "[outa]",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
         str(output_path),
     ]
     _run(cmd)
@@ -112,8 +121,17 @@ def concatenate_shots_stream_copy(
 
     try:
         cmd = [
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", list_path, "-c", "copy", str(output_path),
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            list_path,
+            "-c",
+            "copy",
+            str(output_path),
         ]
         _run(cmd)
     finally:

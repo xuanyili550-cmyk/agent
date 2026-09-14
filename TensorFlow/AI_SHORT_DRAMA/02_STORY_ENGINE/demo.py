@@ -14,12 +14,15 @@ for _p in Path(__file__).resolve().parents:
 
 import schemas as sch
 from agents import (
+    ChapterPlannerAgent,
     CharacterAgent,
+    ChiefEditorAgent,
     DialogueBatch,
     EpisodeAgent,
     FileConversationStore,
     MockLLMProvider,
     PromptAgent,
+    QCOfficerAgent,
     ScreenplayAgent,
     StoryAgent,
     StoryboardAgent,
@@ -86,51 +89,90 @@ def _story_bible_fixture() -> str:
 def _character_fixture(_system: str, user: str) -> str:
     if "女主角" in user:
         char = sch.Character(
-            id="char_su_wanwan", name="苏晚晚", role=sch.CharacterRole.PROTAGONIST, gender=sch.Gender.FEMALE, age=26,
-            occupation="苏氏集团原设计总监", appearance="鹅蛋脸，眼神冷静锐利",
-            personality_traits=["表面温顺", "内心坚韧"], backstory="重生前被继妹与未婚夫联手构陷致死。",
+            id="char_su_wanwan",
+            name="苏晚晚",
+            role=sch.CharacterRole.PROTAGONIST,
+            gender=sch.Gender.FEMALE,
+            age=26,
+            occupation="苏氏集团原设计总监",
+            appearance="鹅蛋脸，眼神冷静锐利",
+            personality_traits=["表面温顺", "内心坚韧"],
+            backstory="重生前被继妹与未婚夫联手构陷致死。",
             motivation="阻止悲剧重演，揪出所有幕后黑手",
             relationships=[sch.Relationship(character_id="char_su_mengyao", relation_type=sch.RelationType.RIVAL, description="继妹，最大威胁")],
         )
     elif "男主角" in user:
         char = sch.Character(
-            id="char_lu_jingchen", name="陆景琛", role=sch.CharacterRole.DEUTERAGONIST, gender=sch.Gender.MALE, age=31,
-            occupation="修远集团总裁", appearance="身形挺拔，气场冷峻",
-            personality_traits=["城府深", "外冷内热"], backstory="白手起家的商业强者，厌恶背叛与算计。",
+            id="char_lu_jingchen",
+            name="陆景琛",
+            role=sch.CharacterRole.DEUTERAGONIST,
+            gender=sch.Gender.MALE,
+            age=31,
+            occupation="修远集团总裁",
+            appearance="身形挺拔，气场冷峻",
+            personality_traits=["城府深", "外冷内热"],
+            backstory="白手起家的商业强者，厌恶背叛与算计。",
             motivation="被苏晚晚的坚韧打动，决定助她复仇",
             relationships=[sch.Relationship(character_id="char_su_wanwan", relation_type=sch.RelationType.ALLY, description="从合作到心动")],
         )
     else:
         char = sch.Character(
-            id="char_su_mengyao", name="苏梦瑶", role=sch.CharacterRole.ANTAGONIST, gender=sch.Gender.FEMALE, age=24,
-            occupation="苏氏集团市场部经理", appearance="甜美精致，笑容恰到好处地无辜",
-            personality_traits=["嫉妒心强", "擅长伪装"], backstory="自幼觊觎苏晚晚的一切，联合他人策划构陷。",
+            id="char_su_mengyao",
+            name="苏梦瑶",
+            role=sch.CharacterRole.ANTAGONIST,
+            gender=sch.Gender.FEMALE,
+            age=24,
+            occupation="苏氏集团市场部经理",
+            appearance="甜美精致，笑容恰到好处地无辜",
+            personality_traits=["嫉妒心强", "擅长伪装"],
+            backstory="自幼觊觎苏晚晚的一切，联合他人策划构陷。",
             motivation="彻底取代苏晚晚，独占苏氏集团继承权",
             relationships=[sch.Relationship(character_id="char_su_wanwan", relation_type=sch.RelationType.RIVAL, description="表面姐妹实为对手")],
         )
     return char.model_dump_json()
 
 
-def _episode_fixture() -> str:
-    episode = sch.Episode(
-        id="ep_001",
-        episode_number=1,
-        season_id="season_001",
+EPISODE_FIXTURES = {
+    1: dict(
         title="重生夜",
         synopsis="苏晚晚重生回到订婚宴当晚，提前抵达现场试探对手，却意外撞见陆景琛。",
         hook="开场3秒：苏晚晚浑身是血跌落订婚宴会厅台阶，画面骤然倒转回三年前同一晚。",
         cliffhanger="陆景琛忽然逼近质问：'你刚刚说的——我杀了你——是什么意思？'",
+        emotional_arc="绝望死亡 → 震惊重生 → 警惕试探 → 悬念对峙",
+    ),
+    2: dict(
+        title="交易",
+        synopsis="苏晚晚向陆景琛摊牌'重生'一事，以未来三年的商业情报换取他的结盟，苏梦瑶暗中跟踪。",
+        hook="开场3秒：陆景琛把一份并购合同拍在桌上——'证明你说的是真的，否则我现在就报警。'",
+        cliffhanger="苏梦瑶在门外举起手机，屏幕上是两人密谈的照片，收件人写着'继母'。",
+        emotional_arc="对峙 → 试探 → 结盟 → 被窥视的危机",
+    ),
+}
+
+
+def _episode_fixture(_system: str, user: str) -> str:
+    m = re.search(r"这是第 (\d+) 集", user)
+    number = int(m.group(1)) if m else 1
+    f = EPISODE_FIXTURES.get(number, EPISODE_FIXTURES[1])
+    episode = sch.Episode(
+        id=f"ep_{number:03d}",
+        episode_number=number,
+        season_id="season_001",
         duration_seconds=300,
         characters_featured=["char_su_wanwan", "char_lu_jingchen", "char_su_mengyao"],
-        emotional_arc="绝望死亡 → 震惊重生 → 警惕试探 → 悬念对峙",
+        **f,
     )
     return episode.model_dump_json()
 
 
-def _script_fixture() -> str:
+def _script_fixture(_system: str, user: str) -> str:
+    m = re.search(r"episode_id='([^']+)'", user)
+    episode_id = m.group(1) if m else "ep_001"
+    m_v = re.search(r"version 填 (\d+)", user)
     script = sch.Script(
-        id="script_ep_001",
-        episode_id="ep_001",
+        id=f"script_{episode_id}",
+        episode_id=episode_id,
+        version=int(m_v.group(1)) if m_v else 1,
         title="重生夜",
         language="zh",
         content=(
@@ -142,7 +184,6 @@ def _script_fixture() -> str:
             "苏晚晚确认自己回到了三年前，脑海中浮现出陆景琛这个关键人物。\n"
             "苏晚晚（自语）：这一次，我不会再让你们轻易得逞。"
         ),
-        version=1,
     )
     return script.model_dump_json()
 
@@ -150,10 +191,12 @@ def _script_fixture() -> str:
 def _scene_fixture(_system: str, user: str) -> str:
     m = re.search(r"scene_number=(\d+)", user)
     scene_num = int(m.group(1))
+    m_ep = re.search(r"episode_id='ep_(\d+)'", user)
+    ep_num = int(m_ep.group(1)) if m_ep else 1
     f = SCENE_FIXTURES[scene_num]
     scene = sch.Scene(
-        id=f"scene_001_{scene_num:02d}",
-        episode_id="ep_001",
+        id=f"scene_{ep_num:03d}_{scene_num:02d}",
+        episode_id=f"ep_{ep_num:03d}",
         scene_number=scene_num,
         location_id=f["location_id"],
         time_of_day=f["time_of_day"],
@@ -260,18 +303,66 @@ def _video_prompt_fixture(_system: str, user: str) -> str:
     return prompt.model_dump_json()
 
 
+def _qc_verdict_fixture(_system: str, user: str) -> str:
+    m = re.search(r"id 使用 '([^']+)'，episode_id 为 '([^']+)'", user)
+    verdict = sch.QCVerdict(
+        id=m.group(1) if m else "qc_ep_001",
+        episode_id=m.group(2) if m else "ep_001",
+        passed=True,
+        score=86,
+        issues=[
+            sch.QCIssue(
+                code="pacing",
+                severity=sch.IssueSeverity.LOW,
+                location="scene_001_02",
+                description="第二场情绪转折略快",
+                suggestion="可在苏晚晚自语前加一个 1.5 秒的沉默特写",
+            )
+        ],
+        summary="钩子与悬念达标，人物一致，引用闭合；仅节奏有轻微可优化点。",
+    )
+    return verdict.model_dump_json()
+
+
+def _editorial_fixture(_system: str, user: str) -> str:
+    m = re.search(r"id 使用 '([^']+)'，episode_id 为 '([^']+)'", user)
+    decision = sch.EditorialDecision(
+        id=m.group(1) if m else "ed_ep_001",
+        episode_id=m.group(2) if m else "ep_001",
+        decision=sch.EditorialDecisionType.APPROVE,
+        notes="开场 3 秒的坠落画面冲击力足够，结尾质问直接抛出下一集悬念，可以投产。",
+        required_changes=[],
+        commercial_score=82,
+        audience_fit="契合 18-35 岁女性观众对重生复仇题材的爽感预期",
+    )
+    return decision.model_dump_json()
+
+
+def _season_arc_fixture(_system: str, user: str) -> str:
+    # 章节规划师（LLM 版）的 mock：返回和规则版一致的分幕，只是文案更具体
+    arc = SeasonArcPlanner(num_episodes=12).plan(sch.StoryBible.model_validate_json(_story_bible_fixture()))
+    beats = [
+        b.model_copy(update={"description": f"{b.act}：{['苏晚晚重生并借订婚宴试探敌人', '结盟陆景琛，苏梦瑶与继母反扑', '揭开三年前死亡真相，家族清算'][i]}"})
+        for i, b in enumerate(arc.beats)
+    ]
+    return arc.model_copy(update={"beats": beats}).model_dump_json()
+
+
 def build_mock_provider() -> MockLLMProvider:
     return MockLLMProvider(
         {
             "StoryBible": _story_bible_fixture(),
+            "SeasonArc": _season_arc_fixture,
             "Character": _character_fixture,
-            "Episode": _episode_fixture(),
-            "Script": _script_fixture(),
+            "Episode": _episode_fixture,
+            "Script": _script_fixture,
             "Scene": _scene_fixture,
             "ShotsFile": _shots_fixture,
             "DialogueBatch": _dialogue_fixture,
             "ImagePrompt": _image_prompt_fixture,
             "VideoPrompt": _video_prompt_fixture,
+            "QCVerdict": _qc_verdict_fixture,
+            "EditorialDecision": _editorial_fixture,
         }
     )
 
@@ -293,13 +384,14 @@ def main() -> None:
         screenplay_agent=ScreenplayAgent(provider, memory=memory),
         storyboard_agent=StoryboardAgent(provider, memory=memory),
         prompt_agent=PromptAgent(provider, memory=memory),
-        season_planner=SeasonArcPlanner(num_episodes=12),
+        season_planner=ChapterPlannerAgent(provider, memory=memory, num_episodes=12),
         episode_planner=EpisodePlanner(),
+        qc_officer=QCOfficerAgent(provider, memory=memory),
+        chief_editor=ChiefEditorAgent(provider, memory=memory),
     )
-    graph = build_graph(bundle, num_characters=3, num_scenes=2, episode_number=1)
-    result = graph.invoke(
-        {"idea": "豪门千金重生复仇，携手冷峻总裁夺回家族企业", "target_duration_seconds": 300}
-    )
+    # 连续生成两集：第 2 集的 EpisodeAgent 会拿到第 1 集的"前情提要"
+    graph = build_graph(bundle, num_characters=3, num_scenes=2, episode_numbers=[1, 2])
+    result = graph.invoke({"idea": "豪门千金重生复仇，携手冷峻总裁夺回家族企业", "target_duration_seconds": 300})
 
     print("=== Story Bible ===")
     print(result["story_bible"].title, "-", result["story_bible"].logline)
@@ -308,10 +400,14 @@ def main() -> None:
     print("\n=== Characters ===")
     for c in result["characters"]:
         print(f"- {c.name} ({c.role.value})")
-    print("\n=== Episode ===")
+    print("\n=== Episodes ===")
+    for ep in result["episodes"]:
+        print(f"第{ep.episode_number}集《{ep.title}》| hook: {ep.hook}")
+        print(f"  cliffhanger: {ep.cliffhanger}")
+    print("\n=== Editorial (质检官 + 总编审) ===")
+    for ep_id, rec in result["editorial_by_episode"].items():
+        print(f"{ep_id}: status={rec['status']} qc_score={rec['qc']['score']} decision={rec['editorial']['decision']} rounds={rec['revision_rounds']}")
     ep = result["episode"]
-    print(f"{ep.title} | hook: {ep.hook}")
-    print(f"cliffhanger: {ep.cliffhanger}")
     print("\n=== Script (first 120 chars) ===")
     print(result["script"].content[:120].replace("\n", " "))
     print("\n=== Scenes / Shots / Dialogue ===")
@@ -320,12 +416,11 @@ def main() -> None:
     print("\n=== Prompts ===")
     print(f"image_prompts={len(result['image_prompts'])} video_prompts={len(result['video_prompts'])}")
     print("\n=== Conversation Memory ===")
-    print(f"本次 LLM 调用 {len(provider.calls)} 次，历史累计 {memory.turn_count} 轮，"
-          f"最后一次调用携带 {provider.calls[-1]['history_len']} 条历史消息")
+    print(f"本次 LLM 调用 {len(provider.calls)} 次，历史累计 {memory.turn_count} 轮，最后一次调用携带 {provider.calls[-1]['history_len']} 条历史消息")
 
     story_file = sch.StoryFile(story_bible=result["story_bible"], season_arcs=[result["season_arc"]])
     characters_file = sch.CharactersFile(characters=result["characters"])
-    episodes_file = sch.EpisodesFile(episodes=[result["episode"]])
+    episodes_file = sch.EpisodesFile(episodes=result["episodes"])
     scenes_file = sch.ScenesFile(scenes=result["scenes"])
     shots_file = sch.ShotsFile(shots=result["shots"])
     prompts_file = sch.PromptsFile(image_prompts=result["image_prompts"], video_prompts=result["video_prompts"])

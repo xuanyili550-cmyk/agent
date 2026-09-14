@@ -5,6 +5,7 @@ import os
 import re
 import sys
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, TypeVar
 
@@ -17,6 +18,7 @@ from .memory import (
     Message,
     Summarizer,
     context_window_for,
+    estimate_tokens,
 )
 
 # bootstrap: 让 02_STORY_ENGINE 与 03_STRUCTURED_DATA 互相可 import，无需打包安装
@@ -42,11 +44,36 @@ class AgentGenerationError(RuntimeError):
     pass
 
 
+class TransientLLMError(RuntimeError):
+    """网络抖动 / 429 限流 / 5xx 这类"再试一次大概率就好"的错误。
+
+    BaseAgent 不在进程内重试它（避免和 SDK 自带的重试叠加成指数级等待），而是原样抛给
+    Celery 任务层，由 ``BaseTask.autoretry_for`` 按指数退避重新投递——这就是三级重试里的
+    第一级"同样参数再试一次"。
+    """
+
+
+@dataclass
+class LLMUsage:
+    provider: str
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
 class LLMProvider(ABC):
     # 模型上下文窗口上限（token）。ConversationMemory 用它决定历史消息什么时候该裁剪。
     context_window: int = context_window_for(None)
     # 单次输出上限；连同结构化标记一起作为 ConversationMemory 的 reserve_tokens 余量。
     max_tokens: int = 4096
+    provider_name: str = "unknown"
+    model: str = "unknown"
+    # 最近一次 complete() 的 token 用量；没有官方数字的 provider 用估算值填充
+    last_usage: LLMUsage | None = None
 
     @abstractmethod
     def complete(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> str:
@@ -54,58 +81,139 @@ class LLMProvider(ABC):
         实现方要把它原样放在本次 user prompt 之前发给模型；None/空表示无状态单轮调用。"""
         raise NotImplementedError
 
+    def count_tokens(self, text: str) -> int:
+        """给 ConversationMemory 用的 token 计数；子类有真 tokenizer 就覆盖，默认离线估算。"""
+        return estimate_tokens(text)
+
+    def _estimate_usage(self, system_prompt: str, user_prompt: str, history: list[Message] | None, reply: str) -> LLMUsage:
+        prompt_tokens = self.count_tokens(system_prompt) + self.count_tokens(user_prompt)
+        prompt_tokens += sum(self.count_tokens(m["content"]) for m in (history or []))
+        return LLMUsage(self.provider_name, self.model, prompt_tokens, self.count_tokens(reply))
+
 
 class AnthropicProvider(LLMProvider):
-    def __init__(self, model: str = "claude-sonnet-4-5", api_key_env: str = "ANTHROPIC_API_KEY", max_tokens: int = 4096):
+    provider_name = "anthropic"
+
+    def __init__(
+        self,
+        model: str = "claude-sonnet-4-5",
+        api_key_env: str = "ANTHROPIC_API_KEY",
+        max_tokens: int = 4096,
+        timeout_seconds: float = 120.0,
+        sdk_max_retries: int = 2,
+    ):
         api_key = os.environ.get(api_key_env)
         if not api_key:
             raise NotConfiguredError(
-                f"AnthropicProvider 未配置：环境变量 {api_key_env} 为空。"
-                "请设置 ANTHROPIC_API_KEY 后再使用真实 LLM，或改用 MockLLMProvider 离线运行。"
+                f"AnthropicProvider 未配置：环境变量 {api_key_env} 为空。请设置 ANTHROPIC_API_KEY 后再使用真实 LLM，或改用 MockLLMProvider 离线运行。"
             )
         self._api_key = api_key
         self.model = model
         self.max_tokens = max_tokens
         self.context_window = context_window_for(model)
+        self.timeout_seconds = timeout_seconds
+        self.sdk_max_retries = sdk_max_retries
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            import anthropic
+
+            # SDK 自带对 429/5xx/连接错误的短退避重试；超过 sdk_max_retries 后抛出，由我们转成 TransientLLMError
+            self._client = anthropic.Anthropic(api_key=self._api_key, timeout=self.timeout_seconds, max_retries=self.sdk_max_retries)
+        return self._client
 
     def complete(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> str:
         import anthropic
 
-        client = anthropic.Anthropic(api_key=self._api_key)
-        response = client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=system_prompt,
-            messages=[*(history or []), {"role": "user", "content": user_prompt}],
+        try:
+            response = self._get_client().messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=system_prompt,
+                messages=[*(history or []), {"role": "user", "content": user_prompt}],
+            )
+        except (anthropic.RateLimitError, anthropic.APIConnectionError, anthropic.APITimeoutError, anthropic.InternalServerError) as exc:
+            raise TransientLLMError(f"Anthropic 瞬时错误：{type(exc).__name__}: {exc}") from exc
+        usage = getattr(response, "usage", None)
+        self.last_usage = LLMUsage(
+            self.provider_name,
+            self.model,
+            int(getattr(usage, "input_tokens", 0) or 0),
+            int(getattr(usage, "output_tokens", 0) or 0),
         )
         return "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
 
 
 class OpenAIProvider(LLMProvider):
-    def __init__(self, model: str = "gpt-4o-mini", api_key_env: str = "OPENAI_API_KEY", max_tokens: int = 4096):
+    provider_name = "openai"
+
+    def __init__(
+        self,
+        model: str = "gpt-4o-mini",
+        api_key_env: str = "OPENAI_API_KEY",
+        max_tokens: int = 4096,
+        timeout_seconds: float = 120.0,
+        sdk_max_retries: int = 2,
+    ):
         api_key = os.environ.get(api_key_env)
         if not api_key:
             raise NotConfiguredError(
-                f"OpenAIProvider 未配置：环境变量 {api_key_env} 为空。"
-                "请设置 OPENAI_API_KEY 后再使用真实 LLM，或改用 MockLLMProvider 离线运行。"
+                f"OpenAIProvider 未配置：环境变量 {api_key_env} 为空。请设置 OPENAI_API_KEY 后再使用真实 LLM，或改用 MockLLMProvider 离线运行。"
             )
         self._api_key = api_key
         self.model = model
         self.max_tokens = max_tokens
         self.context_window = context_window_for(model)
+        self.timeout_seconds = timeout_seconds
+        self.sdk_max_retries = sdk_max_retries
+        self._client = None
+        self._encoding = None
+
+    def _get_client(self):
+        if self._client is None:
+            import openai
+
+            self._client = openai.OpenAI(api_key=self._api_key, timeout=self.timeout_seconds, max_retries=self.sdk_max_retries)
+        return self._client
+
+    def count_tokens(self, text: str) -> int:
+        # tiktoken 首次使用要下载 BPE 词表；离线环境拿不到就退回估算，不能因为算 token 把主流程搞挂
+        if self._encoding is None:
+            try:
+                import tiktoken
+
+                try:
+                    self._encoding = tiktoken.encoding_for_model(self.model)
+                except KeyError:
+                    self._encoding = tiktoken.get_encoding("o200k_base")
+            except Exception:
+                self._encoding = False
+        if not self._encoding:
+            return estimate_tokens(text)
+        return len(self._encoding.encode(text))
 
     def complete(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> str:
         import openai
 
-        client = openai.OpenAI(api_key=self._api_key)
-        response = client.chat.completions.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                *(history or []),
-                {"role": "user", "content": user_prompt},
-            ],
+        try:
+            response = self._get_client().chat.completions.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    *(history or []),
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+        except (openai.RateLimitError, openai.APIConnectionError, openai.APITimeoutError, openai.InternalServerError) as exc:
+            raise TransientLLMError(f"OpenAI 瞬时错误：{type(exc).__name__}: {exc}") from exc
+        usage = getattr(response, "usage", None)
+        self.last_usage = LLMUsage(
+            self.provider_name,
+            self.model,
+            int(getattr(usage, "prompt_tokens", 0) or 0),
+            int(getattr(usage, "completion_tokens", 0) or 0),
         )
         return response.choices[0].message.content or ""
 
@@ -116,13 +224,22 @@ class LocalTransformersProvider(LLMProvider):
     download). Default model is ungated on Hugging Face; swap model_id for
     any other open chat model (see 06_MODELS/llm/registry.json)."""
 
+    provider_name = "local"
+
     def __init__(self, model_id: str = "microsoft/Phi-3.5-mini-instruct", device_map: str = "auto", max_new_tokens: int = 2048):
         self.model_id = model_id
+        self.model = model_id
         self.device_map = device_map
         self.max_new_tokens = max_new_tokens
         self.max_tokens = max_new_tokens
         self.context_window = context_window_for(model_id)
         self._pipe = None
+
+    def count_tokens(self, text: str) -> int:
+        # 权重已加载时用模型自己的 tokenizer，精确；未加载时不为了数 token 去加载几 GB 权重
+        if self._pipe is not None and getattr(self._pipe, "tokenizer", None) is not None:
+            return len(self._pipe.tokenizer.encode(text, add_special_tokens=False))
+        return estimate_tokens(text)
 
     def _load(self):
         if self._pipe is not None:
@@ -151,13 +268,18 @@ class LocalTransformersProvider(LLMProvider):
         ]
         output = pipe(messages, max_new_tokens=self.max_new_tokens, do_sample=False)
         reply = output[0]["generated_text"][-1]
-        return reply["content"] if isinstance(reply, dict) else str(reply)
+        text = reply["content"] if isinstance(reply, dict) else str(reply)
+        self.last_usage = self._estimate_usage(system_prompt, user_prompt, history, text)
+        return text
 
 
 FixtureFn = Callable[[str, str], str]
 
 
 class MockLLMProvider(LLMProvider):
+    provider_name = "mock"
+    model = "mock"
+
     def __init__(self, fixtures: dict[str, str | FixtureFn]):
         self.fixtures = fixtures
         self.context_window = 128_000
@@ -170,9 +292,9 @@ class MockLLMProvider(LLMProvider):
         if schema_name not in self.fixtures:
             raise NotConfiguredError(f"MockLLMProvider 没有为 schema={schema_name} 注册 fixture")
         fixture = self.fixtures[schema_name]
-        if callable(fixture):
-            return fixture(system_prompt, user_prompt)
-        return fixture
+        text = fixture(system_prompt, user_prompt) if callable(fixture) else fixture
+        self.last_usage = self._estimate_usage(system_prompt, user_prompt, history, text)
+        return text
 
 
 def _extract_json(text: str) -> str:
@@ -228,6 +350,18 @@ class BaseAgent(ABC):
         # 多个 agent 共用同一个 memory 对象，就等于整条流水线在一个连续对话里完成——
         # 生成角色时模型能看到前面生成的 Story Bible，生成分镜时能看到剧本，不再各说各话。
         self.memory = memory
+        # 本 agent 每次 LLM 调用的用量流水（含失败重试），由上层汇总记账
+        self.usage_log: list[LLMUsage] = []
+        # 用量回调：13_INFRA 把它接到数据库 + Prometheus；不接也不影响运行
+        self.usage_sink: Callable[[str, LLMUsage], None] | None = None
+
+    def _record_usage(self) -> None:
+        usage = self.provider.last_usage
+        if usage is None:
+            return
+        self.usage_log.append(usage)
+        if self.usage_sink is not None:
+            self.usage_sink(self.__class__.__name__, usage)
 
     def generate(self, user_prompt: str, schema: type[T]) -> T:
         marker = (
@@ -238,26 +372,34 @@ class BaseAgent(ABC):
         prompt = user_prompt + marker
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
-            history = self.memory.window(self.system_prompt, prompt) if self.memory is not None else None
-            raw = self.provider.complete(self.system_prompt, prompt, history)
-            try:
-                result = schema.model_validate_json(_extract_json(raw))
-            except (ValidationError, json.JSONDecodeError) as exc:
-                last_error = exc
-                prompt = (
-                    user_prompt
-                    + f"\n\n第 {attempt} 次输出未通过校验，错误信息：{exc}\n"
-                    + "请修正后重新只输出合法 JSON。"
-                    + marker
-                )
+            if self.memory is not None:
+                # 加锁：同一会话同一时刻只有一个调用在"读历史 -> 调模型 -> 写历史"，
+                # 多个 worker 处理同一 context_id 时不会互相覆盖对方刚写入的轮次
+                with self.memory.transaction():
+                    history = self.memory.window(self.system_prompt, prompt)
+                    raw = self.provider.complete(self.system_prompt, prompt, history)
+                    self._record_usage()
+                    parsed, exc = self._try_parse(raw, schema)
+                    if parsed is not None:
+                        # 只记录最终通过校验的那一轮；失败的重试不进历史
+                        self.memory.add_turn(prompt, raw)
+                        return parsed
             else:
-                if self.memory is not None:
-                    # 只记录最终通过校验的那一轮；失败的重试不进历史
-                    self.memory.add_turn(prompt, raw)
-                return result
-        raise AgentGenerationError(
-            f"{self.__class__.__name__} 在 {self.max_retries} 次重试后仍未生成合法的 {schema.__name__} JSON：{last_error}"
-        )
+                raw = self.provider.complete(self.system_prompt, prompt, None)
+                self._record_usage()
+                parsed, exc = self._try_parse(raw, schema)
+                if parsed is not None:
+                    return parsed
+            last_error = exc
+            prompt = user_prompt + f"\n\n第 {attempt} 次输出未通过校验，错误信息：{exc}\n" + "请修正后重新只输出合法 JSON。" + marker
+        raise AgentGenerationError(f"{self.__class__.__name__} 在 {self.max_retries} 次重试后仍未生成合法的 {schema.__name__} JSON：{last_error}")
+
+    @staticmethod
+    def _try_parse(raw: str, schema: type[T]) -> tuple[T | None, Exception | None]:
+        try:
+            return schema.model_validate_json(_extract_json(raw)), None
+        except (ValidationError, json.JSONDecodeError) as exc:
+            return None, exc
 
 
 SUMMARY_SYSTEM_PROMPT = (
@@ -293,6 +435,7 @@ def build_memory(
         store,
         max_context_tokens=provider.context_window,
         reserve_tokens=provider.max_tokens + extra_reserve_tokens,
+        token_counter=provider.count_tokens,
         compaction=compaction,
         summarizer=summarizer,
     )

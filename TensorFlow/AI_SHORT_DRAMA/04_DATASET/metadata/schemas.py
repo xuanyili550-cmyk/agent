@@ -1,4 +1,5 @@
 """Pydantic row schemas for the 04_DATASET/metadata/*.jsonl manifests."""
+
 from __future__ import annotations
 
 from typing import Literal, Optional

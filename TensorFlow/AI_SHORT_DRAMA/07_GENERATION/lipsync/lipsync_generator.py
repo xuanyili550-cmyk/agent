@@ -3,6 +3,7 @@ Lip-sync generation via a pluggable provider abstraction. Same pattern as the
 other 07_GENERATION providers: API client placeholders reading a key from an
 env var, raising NotConfiguredError if missing.
 """
+
 from __future__ import annotations
 
 import os
@@ -15,6 +16,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from asset_registry import AssetRecord, new_asset_id, now_iso, write_asset_record  # noqa: E402
 from errors import NotConfiguredError  # noqa: E402
+from http_retry import request_with_retry  # noqa: E402
 
 
 class BaseLipSyncProvider(ABC):
@@ -44,8 +46,6 @@ class SyncSoLipSyncProvider(BaseLipSyncProvider):
         output_dir: str = "./outputs",
         seed: Optional[int] = None,
     ) -> str:
-        import requests
-
         headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
         payload = {
             "model": "lipsync-1.9.0-beta",
@@ -55,8 +55,7 @@ class SyncSoLipSyncProvider(BaseLipSyncProvider):
             ],
         }
 
-        response = requests.post(self.API_URL, json=payload, headers=headers, timeout=60)
-        response.raise_for_status()
+        response = request_with_retry("POST", self.API_URL, json=payload, headers=headers)
         task = response.json()
 
         out_dir = Path(output_dir)

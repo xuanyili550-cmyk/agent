@@ -14,6 +14,7 @@
 ``llm_task``）只依赖 ``ConversationMemory``——和项目里其他 Provider 抽象一样，换存储后端
 只改"传哪个 store 进去"这一行。
 """
+
 from __future__ import annotations
 
 import json
@@ -22,8 +23,9 @@ import re
 import threading
 import time
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Callable, Iterator, Literal
 
 Message = dict[str, str]  # {"role": "user" | "assistant", "content": str}
 
@@ -86,8 +88,17 @@ def context_window_for(model: str | None) -> int:
 # --------------------------------------------------------------------------------------
 
 
+class ConversationLockTimeout(RuntimeError):
+    """在 lock_timeout 内没拿到会话锁：说明另一个 worker 正在处理同一个 context_id。"""
+
+
 class ConversationStore(ABC):
-    """历史消息的持久化抽象：按 context_id 读/写整个会话状态（消息列表 + 摘要）。"""
+    """历史消息的持久化抽象：按 context_id 读/写整个会话状态（消息列表 + 摘要）。
+
+    ``lock(context_id)`` 提供跨进程互斥：ConversationMemory.transaction() 用它把
+    "读历史 -> 调模型 -> 追加历史"包成一个临界区。没有这把锁，两个 worker 同时处理同一会话时
+    后写的会把先写的轮次整个覆盖掉（读-改-写竞争）。
+    """
 
     @abstractmethod
     def load(self, context_id: str) -> dict | None:
@@ -101,6 +112,11 @@ class ConversationStore(ABC):
     def delete(self, context_id: str) -> None:
         raise NotImplementedError
 
+    @abstractmethod
+    def lock(self, context_id: str, timeout: float) -> Iterator[None]:
+        """上下文管理器；超过 timeout 秒拿不到锁抛 ConversationLockTimeout。"""
+        raise NotImplementedError
+
 
 class InMemoryConversationStore(ConversationStore):
     """进程内字典。只适合单元测试和单进程 demo，进程退出即丢。"""
@@ -108,6 +124,7 @@ class InMemoryConversationStore(ConversationStore):
     def __init__(self) -> None:
         self._data: dict[str, dict] = {}
         self._lock = threading.Lock()
+        self._context_locks: dict[str, threading.Lock] = {}
 
     def load(self, context_id: str) -> dict | None:
         with self._lock:
@@ -122,9 +139,23 @@ class InMemoryConversationStore(ConversationStore):
         with self._lock:
             self._data.pop(context_id, None)
 
+    @contextmanager
+    def lock(self, context_id: str, timeout: float) -> Iterator[None]:
+        with self._lock:
+            ctx_lock = self._context_locks.setdefault(context_id, threading.Lock())
+        if not ctx_lock.acquire(timeout=timeout):
+            raise ConversationLockTimeout(f"会话 {context_id} 被占用超过 {timeout}s")
+        try:
+            yield
+        finally:
+            ctx_lock.release()
+
 
 class FileConversationStore(ConversationStore):
-    """每个会话一个 JSON 文件。单机部署 / 本地开发够用；多 worker 多机器请换 Redis。"""
+    """每个会话一个 JSON 文件。单机部署 / 本地开发够用；多 worker 多机器请换 Redis。
+
+    锁用 ``fcntl.flock`` 独占锁文件（同机多进程有效；NFS 上不可靠，跨机器请换 Redis）。
+    """
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
@@ -151,20 +182,50 @@ class FileConversationStore(ConversationStore):
 
     def delete(self, context_id: str) -> None:
         self._path(context_id).unlink(missing_ok=True)
+        self._path(context_id).with_suffix(".lock").unlink(missing_ok=True)
+
+    @contextmanager
+    def lock(self, context_id: str, timeout: float) -> Iterator[None]:
+        import fcntl
+
+        lock_path = self._path(context_id).with_suffix(".lock")
+        deadline = time.monotonic() + timeout
+        with open(lock_path, "a+") as fh:
+            while True:
+                try:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ConversationLockTimeout(f"会话 {context_id} 的锁文件被占用超过 {timeout}s")
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 class RedisConversationStore(ConversationStore):
     """Redis 存储：多 worker / 多机器共享同一份会话历史。``ttl_seconds`` 为 None 表示永不过期。
 
     13_INFRA 的 docker-compose 已经带了 Redis（Celery broker 用的那个），生产上直接复用。
+    锁用 redis-py 自带的 ``Lock``（SET NX + 过期时间），锁本身也有 ``lock_ttl_seconds`` 兜底，
+    worker 崩溃不会把会话永久锁死。
     """
 
-    def __init__(self, url: str, ttl_seconds: int | None = None, key_prefix: str = "llm:context:") -> None:
+    def __init__(
+        self,
+        url: str,
+        ttl_seconds: int | None = None,
+        key_prefix: str = "llm:context:",
+        lock_ttl_seconds: int = 900,
+    ) -> None:
         import redis  # 延迟 import：没装 redis 的开发环境用文件存储也能跑
 
         self._client = redis.Redis.from_url(url)
         self.ttl_seconds = ttl_seconds
         self.key_prefix = key_prefix
+        self.lock_ttl_seconds = lock_ttl_seconds
 
     def _key(self, context_id: str) -> str:
         return f"{self.key_prefix}{context_id}"
@@ -182,6 +243,19 @@ class RedisConversationStore(ConversationStore):
 
     def delete(self, context_id: str) -> None:
         self._client.delete(self._key(context_id))
+
+    @contextmanager
+    def lock(self, context_id: str, timeout: float) -> Iterator[None]:
+        lock = self._client.lock(f"{self._key(context_id)}:lock", timeout=self.lock_ttl_seconds, blocking_timeout=timeout)
+        if not lock.acquire():
+            raise ConversationLockTimeout(f"会话 {context_id} 的 Redis 锁被占用超过 {timeout}s")
+        try:
+            yield
+        finally:
+            try:
+                lock.release()
+            except Exception:  # 锁已因 TTL 过期被释放：不算错误
+                pass
 
 
 # --------------------------------------------------------------------------------------
@@ -216,6 +290,7 @@ class ConversationMemory:
         token_counter: TokenCounter = estimate_tokens,
         compaction: CompactionStrategy = "truncate",
         summarizer: Summarizer | None = None,
+        lock_timeout: float = 300.0,
     ) -> None:
         if compaction == "summarize" and summarizer is None:
             raise ValueError("compaction='summarize' 需要同时传 summarizer")
@@ -226,6 +301,8 @@ class ConversationMemory:
         self.token_counter = token_counter
         self.compaction = compaction
         self.summarizer = summarizer
+        self.lock_timeout = lock_timeout
+        self._in_transaction = False
         self.messages: list[Message] = []
         self.summary: str = ""  # 被压缩掉的旧轮次的摘要（仅 summarize 策略使用）
         self.summarized_upto: int = 0  # messages[:summarized_upto] 已经包含在 summary 里
@@ -265,6 +342,23 @@ class ConversationMemory:
         self.summarized_upto = 0
         self.store.delete(self.context_id)
 
+    @contextmanager
+    def transaction(self) -> Iterator[ConversationMemory]:
+        """持有会话锁并重新加载最新历史；块内的 window()/add_turn() 不会和别的进程打架。
+
+        可重入：嵌套调用只在最外层加锁。
+        """
+        if self._in_transaction:
+            yield self
+            return
+        with self.store.lock(self.context_id, self.lock_timeout):
+            self._in_transaction = True
+            try:
+                self.load()  # 拿到锁后必须重读：别的 worker 可能刚写了新轮次
+                yield self
+            finally:
+                self._in_transaction = False
+
     # ---- 追加轮次 --------------------------------------------------------------------
 
     def add_turn(self, user_prompt: str, assistant_reply: str) -> None:
@@ -295,12 +389,7 @@ class ConversationMemory:
         ]
 
     def budget_for(self, system_prompt: str, user_prompt: str) -> int:
-        return (
-            self.max_context_tokens
-            - self.reserve_tokens
-            - self.token_counter(system_prompt)
-            - self.token_counter(user_prompt)
-        )
+        return self.max_context_tokens - self.reserve_tokens - self.token_counter(system_prompt) - self.token_counter(user_prompt)
 
     def window(self, system_prompt: str = "", user_prompt: str = "") -> list[Message]:
         """返回本次请求应携带的历史消息（不含本次 user prompt）。未触顶就是全部历史。"""

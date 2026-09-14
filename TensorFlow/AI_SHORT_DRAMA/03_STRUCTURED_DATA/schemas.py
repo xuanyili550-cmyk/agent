@@ -315,6 +315,59 @@ class VideoPrompt(BaseModel):
     negative_prompt: str = ""
 
 
+# ---- 编审链路：质检官（QC Officer）与总编审（Chief Editor）的判定 ----------------------
+
+
+class IssueSeverity(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    BLOCKER = "blocker"
+
+
+class QCIssue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str  # 例如 hook_too_slow / character_inconsistent / enum_mismatch / dialogue_off_character
+    severity: IssueSeverity
+    location: str = ""  # 出问题的 episode/scene/shot/dialogue id
+    description: str
+    suggestion: str = ""
+
+
+class QCVerdict(BaseModel):
+    """质检官对一集剧本+分镜的检查结果。passed=False 时流水线把 issues 回灌给编剧/分镜重写。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    episode_id: str
+    passed: bool
+    score: int = Field(ge=0, le=100)
+    issues: list[QCIssue] = Field(default_factory=list)
+    summary: str = ""
+
+
+class EditorialDecisionType(str, Enum):
+    APPROVE = "approve"
+    REVISE = "revise"
+    REJECT = "reject"
+
+
+class EditorialDecision(BaseModel):
+    """总编审的最终决定：approve 进入生产；revise 带修改意见打回；reject 终止并等待人工。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    episode_id: str
+    decision: EditorialDecisionType
+    notes: str
+    required_changes: list[str] = Field(default_factory=list)
+    commercial_score: int = Field(default=0, ge=0, le=100)  # 付费转化/完播潜力的主观评分
+    audience_fit: str = ""
+
+
 class StoryFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -351,3 +404,12 @@ class PromptsFile(BaseModel):
 
     image_prompts: list[ImagePrompt]
     video_prompts: list[VideoPrompt]
+
+
+# 同一个模块会以两种名字被 import：02/05 内部走 sys.path 的 `import schemas`，13_INFRA 走
+# importlib 的 "03_STRUCTURED_DATA.schemas"。不做别名就会出现两份 Shot 类，
+# ShotsFile(shots=[另一份的 Shot]) 会被 pydantic 判为类型不匹配。
+import sys as _sys
+
+for _name in ("schemas", "03_STRUCTURED_DATA.schemas"):
+    _sys.modules.setdefault(_name, _sys.modules[__name__])

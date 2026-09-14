@@ -24,10 +24,7 @@ class EpisodePlanner:
         target_duration_seconds: int = 300,
     ) -> dict:
         if not (MIN_EPISODE_SECONDS <= target_duration_seconds <= MAX_EPISODE_SECONDS):
-            raise ValueError(
-                f"短剧单集时长必须在 {MIN_EPISODE_SECONDS}-{MAX_EPISODE_SECONDS} 秒之间，"
-                f"收到 {target_duration_seconds}"
-            )
+            raise ValueError(f"短剧单集时长必须在 {MIN_EPISODE_SECONDS}-{MAX_EPISODE_SECONDS} 秒之间，收到 {target_duration_seconds}")
         episode_id = f"ep_{episode_number:03d}"
         beat = next((b for b in season_arc.beats if episode_id in b.episode_ids), season_arc.beats[0])
         return {

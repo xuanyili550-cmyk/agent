@@ -14,7 +14,7 @@ def video_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
 
     Expected payload: {"prompt": str, "source_image": str | None, "shot_id": str | None,
       "character_id": str | None, "episode_id": str | None, "duration_sec": float,
-      "seed": int | None, "provider": str | None ("runway" (default) or "pika"),
+      "seed": int | None, "provider": str | None ("runway" 默认 | "pika" | "mochi" 本地免费),
       "output_dir": str | None, "asset_log_path": str | None, "license": str | None}.
     Expected return: {"file_path": str, "model": str, "seed": int | None}.
 
@@ -28,6 +28,8 @@ def video_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
     provider_name = (payload.get("provider") or "runway").lower()
     if provider_name == "pika":
         provider = video_generator_mod.PikaVideoProvider()
+    elif provider_name == "mochi":
+        provider = video_generator_mod.MochiLocalVideoProvider()
     else:
         provider = video_generator_mod.RunwayVideoProvider()
 
