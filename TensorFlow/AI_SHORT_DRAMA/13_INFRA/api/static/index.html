@@ -91,6 +91,15 @@
   .kv b { color: var(--muted); font-weight: 500; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; margin-right: 6px; }
   .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  /* 流水线节点进度条：每个 LangGraph 节点一格，done/active/todo 三态 */
+  .nodes { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 2px; }
+  .node { flex: 1; min-width: 78px; padding: 5px 6px; border-radius: 6px; font-size: 12px; text-align: center; border: 1px solid var(--line); background: #fff; color: var(--muted); }
+  .node.done { background: #e6f6ec; border-color: #bfe6cc; color: var(--ok); }
+  .node.active { background: #e5edff; border-color: #b9ccff; color: var(--primary-dark); font-weight: 600; }
+  .node.active::after { content: " …"; }
+  .cursor::after { content: "▍"; animation: blink 1s steps(2) infinite; color: var(--primary); }
+  @keyframes blink { 50% { opacity: 0; } }
+  .thinking { font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: pre-wrap; word-break: break-all; max-height: 90px; overflow: auto; background: #fff; border: 1px dashed var(--line); border-radius: 6px; padding: 6px; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -167,6 +176,10 @@
         </div>
         <div class="row" style="margin-top:10px">
           <div><label>问题</label><input id="aQuestion" value="帮我检查第 1 集有没有引用错误，有问题就标记人工复核。"></div>
+          <div class="narrow"><label>模式</label><select id="aMode">
+            <option value="stream" selected>流式（SSE，边想边显示）</option>
+            <option value="queue">队列（走 Celery worker）</option>
+          </select></div>
           <button class="btn primary" id="btnAsk">提问</button>
         </div>
         <div class="row" style="margin-top:8px">
@@ -258,7 +271,11 @@
 <script>
 /* ============================ 基础设施：请求 / 提示 / 工具函数 ============================ */
 const $ = (id) => document.getElementById(id);
-const state = { runs: [], projects: [], currentRun: null, pollTimer: null, metricsTimer: null, schemas: {} };
+const state = { runs: [], projects: [], currentRun: null, pollTimer: null, metricsTimer: null, schemas: {}, sseAbort: null, askAbort: null };
+// 故事阶段的 LangGraph 节点，顺序和后端 STORY_NODES 一致；服务端会在 SSE / checkpoint 里回真实值，
+// 这里只是首屏还没拿到数据时的占位
+const STORY_NODES = ["story_bible", "season_arc", "characters", "episodes", "storyboard", "prompts"];
+const NODE_LABEL = { story_bible: "故事设定", season_arc: "季度弧线", characters: "角色", episodes: "剧集+剧本", storyboard: "分镜+编审", prompts: "提示词" };
 
 function toast(msg, kind = "") {
   const el = document.createElement("div");
@@ -298,6 +315,40 @@ function table(headers, rows, emptyText = "暂无数据") {
   if (!rows.length) return `<div class="empty">${emptyText}</div>`;
   return `<div style="overflow:auto"><table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 }
+// SSE：浏览器原生 EventSource 不能带自定义请求头，而所有接口都要 X-API-Key，
+// 所以用 fetch + ReadableStream 自己解析 SSE 分帧（"event: x\ndata: {...}\n\n"）。
+// onEvent(name, data) 每收到一条调用一次；返回一个 abort 函数用于中断。
+async function sse(path, { method = "GET", body, onEvent, signal } = {}) {
+  const headers = { "X-API-Key": $("apiKey").value.trim(), Accept: "text/event-stream" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const resp = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal });
+  if (!resp.ok) {
+    let detail = resp.statusText;
+    try { const j = await resp.json(); detail = typeof j.detail === "string" ? j.detail : pretty(j.detail); } catch (_) {}
+    throw new Error(`${resp.status} ${detail}`);
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep;
+    // SSE 以空行分帧；一次 read 可能拿到半帧或多帧，所以循环切
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      let name = "message", data = "";
+      for (const line of frame.split("\n")) {
+        if (line.startsWith("event: ")) name = line.slice(7).trim();
+        else if (line.startsWith("data: ")) data += line.slice(6);
+      }
+      if (data) { try { onEvent(name, JSON.parse(data)); } catch (_) { onEvent(name, { raw: data }); } }
+    }
+  }
+}
+
 function openModal(title, html) { $("modalTitle").textContent = title; $("modalBody").innerHTML = html; $("modal").classList.add("open"); }
 $("modalClose").onclick = () => $("modal").classList.remove("open");
 $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) $("modal").classList.remove("open"); });
@@ -405,16 +456,50 @@ async function selectRun(runId) {
   $("btnRefreshRun").disabled = false;
   renderRun(); syncAssistantRunSelect();
   $("runList").querySelectorAll("tr.clickable").forEach((tr) => tr.classList.toggle("selected", tr.dataset.id === runId));
-  // 运行中的 run 每 3 秒轮询一次，直到进入终态
+
+  // 换一条 run 就断掉上一条的流
+  if (state.sseAbort) { state.sseAbort.abort(); state.sseAbort = null; }
   clearInterval(state.pollTimer);
-  if (RUNNING.has(state.currentRun.status)) {
-    $("runPolling").textContent = "自动刷新中…";
-    state.pollTimer = setInterval(async () => {
-      try { state.currentRun = await api(`/pipelines/${runId}`, { silent: true }); } catch (_) { return; }
-      renderRun();
-      if (!RUNNING.has(state.currentRun.status)) { clearInterval(state.pollTimer); $("runPolling").textContent = ""; loadRuns(); }
-    }, 3000);
-  } else { $("runPolling").textContent = ""; }
+  if (!RUNNING.has(state.currentRun.status)) { $("runPolling").textContent = ""; return; }
+
+  // 运行中：走 SSE 实时接进度（worker 每跑完一个 LangGraph 节点推一条），不再靠定时轮询
+  $("runPolling").innerHTML = `<span class="dot ok"></span>实时推送中`;
+  const ctrl = new AbortController();
+  state.sseAbort = ctrl;
+  sse(`/pipelines/${runId}/stream`, {
+    signal: ctrl.signal,
+    onEvent: (name, data) => {
+      if (name === "progress" && state.currentRun && state.currentRun.run_id === runId) {
+        // 只更新会变的字段，避免整块重渲染把用户正在勾的复选框重置掉
+        Object.assign(state.currentRun, { status: data.status, stage: data.stage, error: data.error });
+        state.currentRun.result = { ...(state.currentRun.result || {}), ...data };
+        renderRunProgress();
+      }
+      if (name === "end" || name === "timeout") {
+        $("runPolling").textContent = name === "timeout" ? "流已超时，点刷新" : "";
+        // 终态时整份重新拉一次：剧集、成片、发布记录都要刷新
+        if (name === "end") selectRun(runId).then(loadRuns);
+      }
+      if (name === "error") toast("进度流出错：" + (data.detail || ""), "bad");
+    },
+  }).catch((e) => { if (e.name !== "AbortError") { $("runPolling").textContent = ""; toast("进度流中断：" + e.message, "bad"); } });
+}
+
+// 只重画进度条那一块（SSE 每秒都可能来一条，整块重渲染会把用户勾选的复选框冲掉）
+function renderRunProgress() {
+  const box = $("runProgress");
+  if (!box || !state.currentRun) return;
+  box.innerHTML = progressHtml(state.currentRun);
+}
+
+function progressHtml(run) {
+  const res = run.result || {};
+  const nodes = STORY_NODES;
+  const done = new Set(res.progress_nodes || []);
+  const active = (run.stage || "").startsWith("story:") ? run.stage.slice(6) : null;
+  if (!done.size && !active && !RUNNING.has(run.status)) return "";
+  const cells = nodes.map((n) => `<div class="node ${done.has(n) ? "done" : n === active ? "active" : ""}">${NODE_LABEL[n] || n}</div>`).join("");
+  return `<div class="muted" style="margin-top:10px">故事阶段进度（${done.size}/${nodes.length} 个节点）${run.status === "scripting" ? " · 生成中" : ""}</div><div class="nodes">${cells}</div>`;
 }
 $("btnRefreshRun").onclick = () => state.currentRun && selectRun(state.currentRun.run_id);
 
@@ -442,6 +527,7 @@ function renderRun() {
       ${r.error ? `<b>错误</b><span style="color:var(--bad)">${esc(r.error)}</span>` : ""}
       ${res.shots_total !== undefined ? `<b>镜头</b><span>共 ${res.shots_total}${res.approved_shots ? `，QC 通过 ${res.approved_shots.length}` : ""}${res.failed_shots && res.failed_shots.length ? `，<span style="color:var(--bad)">失败 ${res.failed_shots.length}</span>` : ""}</span>` : ""}
     </div>
+    <div id="runProgress">${progressHtml(r)}</div>
     <h3 style="font-size:14px;margin:14px 0 6px">剧集</h3>
     ${table(["选", "集", "标题", "状态", "审核", "AI 编审", "成片", ""], eps, "故事阶段还没产出剧集")}
     <div class="row" style="margin-top:10px">
@@ -450,6 +536,7 @@ function renderRun() {
       <button class="btn danger" id="btnReject" ${["awaiting_review", "scripted"].includes(r.status) ? "" : "disabled"}>打回</button>
       <button class="btn" id="btnRerender" ${["done", "failed", "rendering"].includes(r.status) ? "" : "disabled"}>重新渲染</button>
       <button class="btn" id="btnUsage">LLM 用量</button>
+      <button class="btn" id="btnCheckpoint">检查点</button>
       <button class="btn" id="btnGoAssistant">问制片助理</button>
     </div>
     <div id="usageBox"></div>
@@ -473,6 +560,15 @@ function renderRun() {
     const u = await api(`/pipelines/${r.run_id}/usage`);
     const rows = Object.entries(u.by_agent).map(([a, v]) => `<tr><td>${esc(a)}</td><td>${v.calls}</td><td>${v.input_tokens}</td><td>${v.output_tokens}</td><td>$${v.cost_usd.toFixed(4)}</td></tr>`);
     $("usageBox").innerHTML = `<p style="margin:10px 0 4px">LLM 调用 <b>${u.calls}</b> 次 · 输入 <b>${u.input_tokens}</b> · 输出 <b>${u.output_tokens}</b> token · 估算成本 <b>$${u.cost_usd.toFixed(4)}</b></p>${table(["Agent", "调用", "输入", "输出", "成本"], rows)}`;
+  };
+  $("btnCheckpoint").onclick = async () => {
+    const cp = await api(`/pipelines/${r.run_id}/checkpoint`);
+    if (!cp.enabled) return toast("服务端关闭了 STORY_CHECKPOINT_ENABLED，没有检查点", "bad");
+    const cells = (cp.nodes || STORY_NODES).map((n) => {
+      const cls = cp.completed.includes(n) ? "done" : cp.pending.includes(n) ? "active" : "";
+      return `<div class="node ${cls}">${NODE_LABEL[n] || n}</div>`;
+    }).join("");
+    $("usageBox").innerHTML = `<p style="margin:10px 0 4px">LangGraph 检查点（thread_id = <code>run:${esc(r.run_id)}</code>）：已完成 <b>${cp.completed.length}</b> 个节点，${cp.finished ? "整条流水线已跑完，重试会直接跳过" : `重试将从 <b>${esc((cp.pending[0] || "?"))}</b> 续跑，前面的节点不会重算`}</p><div class="nodes">${cells}</div>`;
   };
   $("btnGoAssistant").onclick = () => { document.querySelector('nav button[data-page="assistant"]').click(); };
 }
@@ -520,6 +616,48 @@ function appendMsg(cls, html) {
   const el = document.createElement("div"); el.className = "msg " + cls; el.innerHTML = html;
   chat.appendChild(el); chat.scrollTop = chat.scrollHeight; return el;
 }
+// 一条已执行完的工具调用记录（流式和队列两种模式共用）
+function stepLine(s) {
+  return `<div class="step">${badge(s.status)} <b class="mono">${esc(s.tool)}</b><span class="mono muted">${esc(JSON.stringify(s.args))}</span><span class="muted">${(s.duration_seconds * 1000).toFixed(1)} ms</span>${s.error ? `<span style="color:var(--bad)">${esc(s.error)}</span>` : ""}</div>`;
+}
+
+// 流式提问：SSE 逐条事件渲染——token 拼成"正在思考"的实时回显，step/tool 立刻变成一行记录，
+// result 到达时换成最终答案。整个过程用户能看到 Agent 在做什么，而不是盯着一个转圈。
+async function askStream(runId, question, pending) {
+  let thinking = "";
+  const steps = [];
+  let notice = "";
+  const render = (answer) => {
+    const head = answer !== undefined
+      ? `<div>${esc(answer)}</div>`
+      : `<div class="muted cursor">Agent 正在思考</div><div class="thinking">${esc(thinking.slice(-400))}</div>`;
+    pending.innerHTML = head + `<div class="steps">${steps.join("") || ""}${notice}</div>`;
+    $("chat").scrollTop = $("chat").scrollHeight;
+  };
+  render();
+  const ctrl = new AbortController();
+  state.askAbort = ctrl;
+  let finished = null;
+  await sse(`/pipelines/${runId}/assistant/stream`, {
+    method: "POST",
+    body: { question, context_id: $("aContext").value.trim() || null },
+    signal: ctrl.signal,
+    onEvent: (name, data) => {
+      if (name === "token") { thinking += data.text; render(); }
+      else if (name === "step") { thinking = ""; steps.push(`<div class="step"><span class="badge run">调用</span> <b class="mono">${esc(data.tool)}</b><span class="mono muted">${esc(JSON.stringify(data.args))}</span></div>`); render(); }
+      else if (name === "tool") { steps.pop(); steps.push(stepLine(data)); render(); }
+      else if (name === "notice") { notice = `<div class="step"><span class="badge warn">${esc(data.kind)}</span><span class="muted">${esc(data.detail || "")}</span></div>`; render(); }
+      else if (name === "result") { finished = data; render(typeof data.answer === "string" ? data.answer : JSON.stringify(data.answer)); }
+      else if (name === "end" && finished) {
+        const u = finished.usage || {};
+        pending.innerHTML += `<div class="muted" style="margin-top:6px">工具 ${finished.tool_rounds} 轮 · 停止原因 ${esc(finished.stopped_reason)} · LLM ${u.llm_calls} 次 · token ${(u.input_tokens || 0) + (u.output_tokens || 0)}${data.flagged && data.flagged.length ? ` · <span style="color:var(--warn)">已标记人工复核：${esc(data.flagged.map((f) => f.episode_id).join(","))}</span>` : ""}</div>`;
+        if (data.flagged && data.flagged.length && state.currentRun && state.currentRun.run_id === runId) selectRun(runId);
+      }
+      else if (name === "error") { pending.innerHTML = `<span style="color:var(--bad)">失败：${esc(data.detail)}</span>`; }
+    },
+  });
+}
+
 async function ask() {
   const runId = $("aRun").value; const question = $("aQuestion").value.trim();
   if (!runId) return toast("先选择一条已产出剧集的运行", "bad");
@@ -527,6 +665,12 @@ async function ask() {
   appendMsg("user", esc(question));
   const pending = appendMsg("bot", `<span class="muted">Agent 规划中…（会自己决定调哪些工具）</span>`);
   $("btnAsk").disabled = true;
+  if ($("aMode").value === "stream") {
+    try { await askStream(runId, question, pending); }
+    catch (e) { if (e.name !== "AbortError") pending.innerHTML = `<span style="color:var(--bad)">流式请求失败：${esc(e.message)}</span>`; }
+    finally { $("btnAsk").disabled = false; state.askAbort = null; }
+    return;
+  }
   try {
     const resp = await api(`/pipelines/${runId}/assistant`, { method: "POST", body: { question, context_id: $("aContext").value.trim() || null } });
     let result = resp.result;
@@ -541,7 +685,7 @@ async function ask() {
       }
     }
     if (!result) { pending.innerHTML = `<span style="color:var(--bad)">失败：${esc(resp.error || "超时")}</span>`; return; }
-    const steps = (result.steps || []).map((s) => `<div class="step">${badge(s.status)} <b class="mono">${esc(s.tool)}</b><span class="mono muted">${esc(JSON.stringify(s.args))}</span><span class="muted">${(s.duration_seconds * 1000).toFixed(1)} ms</span>${s.error ? `<span style="color:var(--bad)">${esc(s.error)}</span>` : ""}</div>`).join("");
+    const steps = (result.steps || []).map(stepLine).join("");
     const u = result.usage || {};
     pending.innerHTML = `<div>${esc(result.answer)}</div>
       <div class="steps">${steps || `<span class="muted">没有调用工具</span>`}

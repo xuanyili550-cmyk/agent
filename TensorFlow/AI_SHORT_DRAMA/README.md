@@ -303,6 +303,62 @@ Docker 镜像里同样自带。五个页面对应平台的全部能力：
 
 API key 只存在浏览器 localStorage；页面本身不需要 key 就能打开，数据请求才带 `X-API-Key`。
 
+想在页面上看清打字机效果：起服务时加 `MOCK_STREAM_DELAY_SECONDS=0.05`（只影响 mock provider 的流式
+分块间隔，纯演示用，默认 0 不拖慢测试）。
+
+## LangGraph 持久化（checkpointer + thread_id）与流式输出
+
+这两块是「同一份会话既能续跑又能实时观察」的基础，和前面的会话记忆**并存互备**，不互相替代。
+
+### 持久化：一个 run = 两份状态
+
+| | 存什么 | 存哪儿 | 丢了会怎样 |
+|---|---|---|---|
+| LangGraph 检查点 | 图的执行状态：跑完哪些节点、各节点产出的强类型对象 | `StoreCheckpointSaver` -> Redis / SQLite / JSON 文件 | 最多重跑几个节点 |
+| 会话记忆 | 发给模型的 user/assistant 轮次 | `ConversationStore`（同一套后端） | 没法解释「当初模型看到了什么」 |
+
+两者用同一个 id（`run:<run_id>`），排查问题时能对上号。关键行为：
+
+- **续跑**：worker 崩在第 5 个节点，Celery 重试只重算第 5、6 个节点。实测从头跑要 9 次 LLM 调用，
+  崩在 `storyboard` 后续跑只花 3 次。
+- **跑完就跳过**：已经跑到 END 的 run 再被重试，直接返回存下来的 state，零新增调用。
+- **会话隔离**：不同 `thread_id` 互不影响，这是多任务并发的前提。
+- **反序列化白名单**：`allowed_checkpoint_types()` 显式登记 `schemas` 里的全部类。不登记时 LangGraph 会把
+  pydantic 对象**静默降级成 dict**，续跑时 `script.content` 直接 AttributeError（这个坑踩过，有测试锁住）。
+  没图省事用 `allowed_msgpack_modules=True`：检查点可能存在共享 Redis 里，无限制还原任意类是一条执行面。
+
+```bash
+STORY_CHECKPOINT_ENABLED=true            # 默认开；关掉就退回一次性执行
+LLM_CONTEXT_REDIS_URL=redis://redis:6379/1   # 检查点和会话历史共用这套存储配置
+```
+
+看状态：`GET /pipelines/{run_id}/checkpoint` 返回已完成 / 待执行节点，一眼看出重试会从哪继续；
+控制台「流水线」页的「检查点」按钮就是它。
+
+### 流式：从 worker 一路推到浏览器
+
+`stream_pipeline()` 用 `graph.stream(stream_mode="updates")` 按节点执行，worker 每完成一个节点就把进度写进
+`PipelineRun.result["progress"]`；`GET /pipelines/{run_id}/stream`（SSE）把变化推给前端，控制台显示成
+六格节点进度条。故事阶段动辄跑几分钟，以前只能干等一个 `invoke` 返回。
+
+模型 token 级流式在 provider 层：`LLMProvider.stream()` 默认是「假流式」（调 `complete()` 整段吐出，
+保证任何后端都能被流式调用），Anthropic 用 `messages.stream`、OpenAI 用 `stream=True` + `include_usage`、
+本地模型用 `TextIteratorStreamer` + 后台线程，都是真增量。`ToolAgent.run_stream()` 把它串成事件流
+（`token` / `step` / `tool` / `notice` / `result`），`POST /pipelines/{run_id}/assistant/stream` 转成 SSE。
+
+两条助理路径的分工：
+
+| 路径 | 何时用 | 代价 |
+|---|---|---|
+| `POST .../assistant`（202 + task_id） | 非交互、批量；LLM 调用归 worker | 拿不到 token 增量 |
+| `POST .../assistant/stream`（SSE） | 人在页面前等着看 | 占住一个 API 工作线程若干秒 |
+
+浏览器原生 `EventSource` 不能带自定义请求头，而所有接口都要 `X-API-Key`，所以控制台用
+`fetch` + `ReadableStream` 自己解析 SSE 分帧。
+
+测试：`pytest tests/test_persistence_streaming.py`（24 个用例，覆盖三种存储后端、续跑、
+pydantic 还原、降级 provider 的流式切换规则、事件序列、两个 SSE 接口）。
+
 ## 跨模块 import 约定
 
 每个顶层目录名都是数字开头的（`01_CONTENT`、`02_STORY_ENGINE`……），所以都不能作为

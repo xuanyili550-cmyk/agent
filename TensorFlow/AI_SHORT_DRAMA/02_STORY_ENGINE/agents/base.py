@@ -15,10 +15,11 @@ import json
 import os
 import re
 import sys
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import Callable, Iterator, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -101,6 +102,15 @@ class LLMProvider(ABC):
         """给 ConversationMemory 用的 token 计数；子类有真 tokenizer 就覆盖，默认离线估算。"""
         return estimate_tokens(text)
 
+    def stream(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> Iterator[str]:
+        """流式生成：逐段 yield 文本增量（打字机效果），全部拼起来等于 ``complete()`` 的返回值。
+
+        默认实现是"假流式"——直接调 ``complete()`` 再整段吐出来。这样所有 provider 都能被流式调用方
+        当成流式用，只是没有真正的增量；能真流的后端（Anthropic / OpenAI）覆盖这个方法。
+        调用方必须把流消费完，``last_usage`` 才是这次调用的真实用量。
+        """
+        yield self.complete(system_prompt, user_prompt, history)
+
     def _estimate_usage(self, system_prompt: str, user_prompt: str, history: list[Message] | None, reply: str) -> LLMUsage:
         """没有官方 usage 字段的后端（本地模型 / mock）用 count_tokens 估一份。"""
         prompt_tokens = self.count_tokens(system_prompt) + self.count_tokens(user_prompt)
@@ -165,6 +175,24 @@ class AnthropicProvider(LLMProvider):
             int(getattr(usage, "output_tokens", 0) or 0),
         )
         return "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
+
+    def stream(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> Iterator[str]:
+        """真流式：用 SDK 的 ``messages.stream``，逐个 token 吐出来；结束后从最终消息里取准确用量。"""
+        import anthropic
+
+        try:
+            with self._get_client().messages.stream(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=system_prompt,
+                messages=[*(history or []), {"role": "user", "content": user_prompt}],
+            ) as stream:
+                yield from stream.text_stream
+                final = stream.get_final_message()
+        except (anthropic.RateLimitError, anthropic.APIConnectionError, anthropic.APITimeoutError, anthropic.InternalServerError) as exc:
+            raise TransientLLMError(f"Anthropic 流式瞬时错误：{type(exc).__name__}: {exc}") from exc
+        usage = getattr(final, "usage", None)
+        self.last_usage = LLMUsage(self.provider_name, self.model, int(getattr(usage, "input_tokens", 0) or 0), int(getattr(usage, "output_tokens", 0) or 0))
 
 
 class OpenAIProvider(LLMProvider):
@@ -245,6 +273,41 @@ class OpenAIProvider(LLMProvider):
         )
         return response.choices[0].message.content or ""
 
+    def stream(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> Iterator[str]:
+        """真流式：``stream=True`` 逐块取 delta。
+
+        ``stream_options={"include_usage": True}`` 让最后一个 chunk 带上真实用量——不加的话流式调用
+        拿不到 token 数，成本就记不准。个别 OpenAI 兼容网关不认这个参数，所以取不到时退回本地估算。
+        """
+        import openai
+
+        chunks: list[str] = []
+        usage = None
+        try:
+            stream = self._get_client().chat.completions.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                messages=[{"role": "system", "content": system_prompt}, *(history or []), {"role": "user", "content": user_prompt}],
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+            for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    usage = chunk.usage
+                for choice in chunk.choices or []:
+                    delta = getattr(choice.delta, "content", None)
+                    if delta:
+                        chunks.append(delta)
+                        yield delta
+        except (openai.RateLimitError, openai.APIConnectionError, openai.APITimeoutError, openai.InternalServerError) as exc:
+            raise TransientLLMError(f"OpenAI 流式瞬时错误：{type(exc).__name__}: {exc}") from exc
+        if usage is not None:
+            self.last_usage = LLMUsage(
+                self.provider_name, self.model, int(getattr(usage, "prompt_tokens", 0) or 0), int(getattr(usage, "completion_tokens", 0) or 0)
+            )
+        else:
+            self.last_usage = self._estimate_usage(system_prompt, user_prompt, history, "".join(chunks))
+
 
 class LocalTransformersProvider(LLMProvider):
     """用 transformers 在本机跑免费开源指令模型：不需要 API key，推理时不联网（只有首次下载权重）。
@@ -305,6 +368,31 @@ class LocalTransformersProvider(LLMProvider):
         self.last_usage = self._estimate_usage(system_prompt, user_prompt, history, text)
         return text
 
+    def stream(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> Iterator[str]:
+        """真流式：``TextIteratorStreamer`` + 后台线程。
+
+        transformers 的 generate 是阻塞的，只能把它丢进一个线程、主线程从 streamer 里迭代取增量，
+        这是 transformers 官方的流式写法。线程设 daemon，调用方提前中断迭代时不会把进程挂住。
+        """
+        from threading import Thread
+
+        from transformers import TextIteratorStreamer
+
+        pipe = self._load()
+        messages = [{"role": "system", "content": system_prompt}, *(history or []), {"role": "user", "content": user_prompt}]
+        prompt = pipe.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        inputs = pipe.tokenizer(prompt, return_tensors="pt").to(pipe.model.device)
+        streamer = TextIteratorStreamer(pipe.tokenizer, skip_prompt=True, skip_special_tokens=True)
+        thread = Thread(target=pipe.model.generate, kwargs={**inputs, "max_new_tokens": self.max_new_tokens, "do_sample": False, "streamer": streamer})
+        thread.daemon = True
+        thread.start()
+        chunks: list[str] = []
+        for piece in streamer:
+            chunks.append(piece)
+            yield piece
+        thread.join()
+        self.last_usage = self._estimate_usage(system_prompt, user_prompt, history, "".join(chunks))
+
 
 FixtureFn = Callable[[str, str], str]
 
@@ -323,10 +411,17 @@ class MockLLMProvider(LLMProvider):
     provider_name = "mock"
     model = "mock"
 
-    def __init__(self, fixtures: dict[str, str | FixtureFn]):
-        """``fixtures``：schema 名 -> 回复；``__default__`` -> 无标记调用的回复。"""
+    def __init__(self, fixtures: dict[str, str | FixtureFn], chunk_size: int = 12, chunk_delay: float = 0.0):
+        """``fixtures``：schema 名 -> 回复；``__default__`` -> 无标记调用的回复。
+
+        ``chunk_size``：流式时每块多少字符。``chunk_delay``：每块之间停多久（秒）——**只为演示存在**。
+        mock 是瞬间返回的，不加延迟时整段流在几毫秒内推完，页面上根本看不出打字机效果；
+        本地演示时把它设成 0.05 就能看清"边生成边显示"。默认 0，测试不会因此变慢。
+        """
         self.fixtures = fixtures
         self.context_window = 128_000
+        self.chunk_size = chunk_size
+        self.chunk_delay = chunk_delay
         self.calls: list[dict] = []  # 记录每次调用带了多少条历史，方便测试/调试
 
     def complete(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> str:
@@ -340,6 +435,18 @@ class MockLLMProvider(LLMProvider):
         text = fixture(system_prompt, user_prompt) if callable(fixture) else fixture
         self.last_usage = self._estimate_usage(system_prompt, user_prompt, history, text)
         return text
+
+    def stream(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> Iterator[str]:
+        """把 fixture 结果切成小块吐出来，模拟打字机效果。
+
+        默认的"假流式"会一次性吐完整段，前端看不出流式和非流式的区别；切块之后 demo 和测试
+        就能真正验证流式链路（SSE 分帧、前端增量拼接）是通的。
+        """
+        text = self.complete(system_prompt, user_prompt, history)
+        for i in range(0, len(text), self.chunk_size):
+            if self.chunk_delay:
+                time.sleep(self.chunk_delay)
+            yield text[i : i + self.chunk_size]
 
 
 def _extract_json(text: str) -> str:

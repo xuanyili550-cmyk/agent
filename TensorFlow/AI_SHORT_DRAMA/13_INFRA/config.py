@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     # ToolAgent（工具循环）：坑 1 的轮次上限；坑 3 的工具级确认门——白名单里的工具才允许自动执行
     agent_max_tool_rounds: int = 5
     agent_tool_allowlist: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # LangGraph 检查点：开启后故事阶段按 thread_id=run:<run_id> 存执行状态，重试从断点续跑而不是重烧 token。
+    # 存储后端复用会话历史那一套（Redis > SQLite > 本地文件）。
+    story_checkpoint_enabled: bool = True
+    # 流式：SSE 接口推送流水线进度的间隔和最长保持时间（超时后前端自己重连，避免连接无限挂着）
+    stream_poll_seconds: float = 1.0
+    stream_max_seconds: float = 600.0
     # 每 1k token 的价格（美元），用来估算成本；模型名前缀匹配，查不到按 0 计
     llm_price_per_1k_input: dict[str, float] = Field(
         default={"claude-sonnet": 0.003, "claude-opus": 0.015, "claude-haiku": 0.0008, "gpt-4o-mini": 0.00015, "gpt-4o": 0.0025}

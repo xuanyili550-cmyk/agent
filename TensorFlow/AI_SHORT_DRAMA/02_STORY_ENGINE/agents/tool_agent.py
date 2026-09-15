@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Iterator, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -109,6 +109,7 @@ class ToolAgent(BaseAgent):
         self.gate = gate
         self.tool_call_sink: ToolCallSink | None = None
         self.run_sink: RunSink | None = None
+        self._last_raw = ""  # run_stream 用：记下最终答案的原始文本，好写进会话记忆
 
     # ---- prompt 组装 ---------------------------------------------------------------------
 
@@ -175,6 +176,142 @@ class ToolAgent(BaseAgent):
             except Exception:  # 指标失败不影响业务
                 pass
         return result
+
+    def run_stream(self, user_prompt: str, schema: type[T] | None = None) -> Iterator[dict]:
+        """流式版 ``run()``：一边跑一边 yield 事件，最后一条是 ``{"event": "result", ...}``。
+
+        事件种类：
+        - ``token``   模型输出的文本增量（打字机效果）。``phase`` 标明这一轮是在"思考下一步"（plan）
+          还是在"给最终答案"——不过模型是先输出 JSON 才知道是哪种，所以 phase 统一给 plan，
+          前端把 token 当"Agent 正在思考"的实时回显即可。
+        - ``step``    模型决定调某个工具（带参数）。
+        - ``tool``    工具执行完（状态、耗时、被拒原因）。
+        - ``notice``  达到轮次上限 / 检测到原地打转 / 协议纠错这类循环控制事件。
+        - ``result``  最终答案 + 完整 AgentRunResult 摘要。
+
+        为什么不直接复用 ``_loop``：``_loop`` 用 ``provider.complete()`` 一次拿整段回复，
+        流式要改成 ``provider.stream()`` 逐块取、边取边推。两条路径的循环控制逻辑（轮次上限、
+        重复检测、协议纠错）保持一致，改动时要同时改——这点用测试锁住（见 tests/test_streaming.py）。
+
+        带 memory 时整个 run 仍然只记 (问题, 最终答案) 一对，和 ``run()`` 一致。
+        """
+
+        def emit(history: list[Message]) -> Iterator[dict]:
+            """跑一遍流式循环，顺手在结束时上报 run 指标；返回最终答案的原始文本给会话记忆用。"""
+            for event in self._loop_stream(user_prompt, schema, history):
+                if event["event"] == "result":
+                    # _result 是给调用方内部用的 AgentRunResult 对象（指标上报、写库），不往 SSE 里发
+                    run_result = event.pop("_result")
+                    if self.run_sink is not None:
+                        try:
+                            self.run_sink(self.__class__.__name__, run_result)
+                        except Exception:  # 指标失败不影响业务
+                            pass
+                    self._last_raw = event["raw"]
+                yield event
+
+        if self.memory is not None:
+            with self.memory.transaction():
+                history = self.memory.window(self._full_system_prompt(schema), user_prompt)
+                self._last_raw = ""
+                yield from emit(history)
+                self.memory.add_turn(user_prompt, self._last_raw)
+        else:
+            yield from emit([])
+
+    def _loop_stream(self, user_prompt: str, schema: type[T] | None, history: list[Message]) -> Iterator[dict]:
+        """``_loop`` 的流式孪生：同样的循环控制，但模型输出用 ``provider.stream()`` 逐块推出去。"""
+        system = self._full_system_prompt(schema)
+        result = AgentRunResult(answer=None)
+        transcript: list[Message] = [{"role": "user", "content": user_prompt}]
+        pending_user = user_prompt
+        parse_failures = 0
+        recent_calls: list[str] = []
+        forced_final = False
+
+        while True:
+            pieces: list[str] = []
+            for piece in self.provider.stream(system, pending_user, history + transcript[:-1]):
+                pieces.append(piece)
+                yield {"event": "token", "phase": "plan", "text": piece}
+            raw = "".join(pieces)
+            self._record_usage()
+            if self.provider.last_usage is not None:
+                result.usage.append(self.provider.last_usage)
+            transcript.append({"role": "assistant", "content": raw})
+
+            try:
+                step = self._parse_step(raw)
+                if step["action"] == "final":
+                    answer = self._validate_answer(step["answer"], schema)
+            except ValueError as exc:
+                parse_failures += 1
+                if parse_failures > self.max_retries:
+                    raise AgentGenerationError(f"{self.__class__.__name__} 连续 {parse_failures} 次输出不符合协议：{exc}") from exc
+                yield {"event": "notice", "kind": "protocol_error", "detail": str(exc)}
+                pending_user = f"你上一条输出不符合输出协议：{exc}\n请只输出一个合法的 JSON 对象（action 为 tool 或 final）。"
+                transcript.append({"role": "user", "content": pending_user})
+                continue
+
+            if step["action"] == "final":
+                result.answer = answer
+                result.transcript = transcript
+                yield {
+                    "event": "result",
+                    "_result": result,
+                    "raw": raw,
+                    "answer": answer if isinstance(answer, str) else (answer.model_dump(mode="json") if isinstance(answer, BaseModel) else answer),
+                    "thought": step.get("thought"),
+                    "tool_rounds": result.tool_rounds,
+                    "stopped_reason": result.stopped_reason,
+                    "steps": [
+                        {"tool": s.tool, "args": s.args, "status": s.status, "error": s.error, "duration_seconds": s.duration_seconds} for s in result.steps
+                    ],
+                    "usage": {
+                        "llm_calls": len(result.usage),
+                        "input_tokens": sum(u.input_tokens for u in result.usage),
+                        "output_tokens": sum(u.output_tokens for u in result.usage),
+                    },
+                }
+                return
+
+            if forced_final:
+                raise AgentLoopError(f"{self.__class__.__name__} 在被要求直接作答后仍请求调用工具 {step['tool']}（{result.stopped_reason}）")
+
+            fingerprint = json.dumps({"tool": step["tool"], "args": step.get("args") or {}}, ensure_ascii=False, sort_keys=True)
+            recent_calls.append(fingerprint)
+            repeating = len(recent_calls) >= self.repeat_limit and len(set(recent_calls[-self.repeat_limit :])) == 1
+
+            if result.tool_rounds >= self.max_tool_rounds:
+                result.stopped_reason = "limit_reached"
+                forced_final = True
+                yield {"event": "notice", "kind": "limit_reached", "detail": f"已达到工具调用上限 {self.max_tool_rounds} 次"}
+                pending_user = f"已达到本次任务的工具调用上限（{self.max_tool_rounds} 次），不能再调用工具。请基于已有信息直接给出最终答案（action=final）。"
+                transcript.append({"role": "user", "content": pending_user})
+                continue
+            if repeating:
+                result.stopped_reason = "repeat_detected"
+                forced_final = True
+                yield {"event": "notice", "kind": "repeat_detected", "detail": f"连续 {self.repeat_limit} 次重复调用 {step['tool']}"}
+                pending_user = f"你已经连续 {self.repeat_limit} 次用同样的参数调用 {step['tool']}，这不会得到新信息。请直接给出最终答案（action=final）。"
+                transcript.append({"role": "user", "content": pending_user})
+                continue
+
+            yield {"event": "step", "tool": step["tool"], "args": step.get("args") or {}, "thought": step.get("thought")}
+            tool_result = self.registry.call(step["tool"], step.get("args"), gate=self.gate, sink=self.tool_call_sink, attempt=result.tool_rounds + 1)
+            result.steps.append(tool_result)
+            result.tool_rounds += 1
+            yield {
+                "event": "tool",
+                "tool": tool_result.tool,
+                "args": tool_result.args,
+                "status": tool_result.status,
+                "error": tool_result.error,
+                "duration_seconds": tool_result.duration_seconds,
+                "output": tool_result.output[:2000],
+            }
+            pending_user = f"工具 {step['tool']} 的结果：\n{tool_result.as_observation()}"
+            transcript.append({"role": "user", "content": pending_user})
 
     def _loop(self, user_prompt: str, schema: type[T] | None, history: list[Message]) -> tuple[AgentRunResult, str]:
         """真正的 规划 -> 调工具 -> 观察 -> 再规划 循环；返回 (结果, 最终答案的原始文本)。"""

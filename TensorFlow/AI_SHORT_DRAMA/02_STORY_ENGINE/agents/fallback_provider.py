@@ -86,6 +86,26 @@ class FallbackProvider(LLMProvider):
         if self.cooldown_seconds > 0:
             self._failed_until[index] = time.monotonic() + self.cooldown_seconds
 
+    def _record_fallback(self, index: int, provider: LLMProvider, exc: Exception) -> None:
+        """把某个 provider 标记为失败并记一次降级事件（如果还有下一个可切）。"""
+        self._mark_failed(index)
+        next_provider = self.providers[index + 1] if index + 1 < len(self.providers) else None
+        if next_provider is None:
+            return
+        event = FallbackEvent(provider.model, next_provider.model, f"{type(exc).__name__}: {exc}")
+        self.events.append(event)
+        if self.on_fallback is not None:
+            try:
+                self.on_fallback(event.from_model, event.to_model, exc)
+            except Exception:  # 指标回调失败不影响降级本身
+                pass
+
+    def _adopt(self, provider: LLMProvider) -> None:
+        """把成功干活的那个 provider 的模型名和用量暴露到外层，成本核算才记在正确的模型头上。"""
+        self.active = provider
+        self.last_usage = provider.last_usage or LLMUsage(provider.provider_name, provider.model)
+        self.model = provider.model
+
     def complete(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> str:
         """依次尝试；全部失败时抛 TransientLLMError（让 Celery 任务层按指数退避再投递）。"""
         last_exc: Exception | None = None
@@ -97,25 +117,44 @@ class FallbackProvider(LLMProvider):
             try:
                 text = provider.complete(system_prompt, user_prompt, history)
             except (TransientLLMError, NotConfiguredError) as exc:
-                self._mark_failed(index)
+                self._record_fallback(index, provider, exc)
                 last_exc = exc
-                next_provider = self.providers[index + 1] if index + 1 < len(self.providers) else None
-                if next_provider is not None:
-                    event = FallbackEvent(provider.model, next_provider.model, f"{type(exc).__name__}: {exc}")
-                    self.events.append(event)
-                    if self.on_fallback is not None:
-                        try:
-                            self.on_fallback(event.from_model, event.to_model, exc)
-                        except Exception:  # 指标回调失败不影响降级本身
-                            pass
                 continue
-            self.active = provider
-            # 对外暴露真正干活的那个模型的用量，成本核算才准确
-            self.last_usage = provider.last_usage or LLMUsage(provider.provider_name, provider.model)
-            self.model = provider.model
+            self._adopt(provider)
             return text
         if skipped_all:
             # 所有 provider 都在冷却期：清掉冷却立刻重试一遍，而不是干等
             self._failed_until.clear()
             return self.complete(system_prompt, user_prompt, history)
+        raise TransientLLMError(f"所有 LLM provider 都不可用（共 {len(self.providers)} 个），最后错误：{last_exc}") from last_exc
+
+    def stream(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None):
+        """流式版的降级：只在**还没吐出任何内容**时才切换 provider。
+
+        为什么有这个限制：已经往前端推了半句话再换模型，用户会看到两个模型的输出被拼在一起，
+        比直接失败更糟。所以一旦第一块增量发出去，中途的错误就原样抛出，由上层决定重试整轮。
+        """
+        last_exc: Exception | None = None
+        skipped_all = True
+        for index, provider in enumerate(self.providers):
+            if not self._available(index):
+                continue
+            skipped_all = False
+            emitted = False
+            try:
+                for piece in provider.stream(system_prompt, user_prompt, history):
+                    emitted = True
+                    yield piece
+            except (TransientLLMError, NotConfiguredError) as exc:
+                if emitted:
+                    raise
+                self._record_fallback(index, provider, exc)
+                last_exc = exc
+                continue
+            self._adopt(provider)
+            return
+        if skipped_all:
+            self._failed_until.clear()
+            yield from self.stream(system_prompt, user_prompt, history)
+            return
         raise TransientLLMError(f"所有 LLM provider 都不可用（共 {len(self.providers)} 个），最后错误：{last_exc}") from last_exc

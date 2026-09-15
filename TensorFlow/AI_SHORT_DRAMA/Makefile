@@ -18,7 +18,7 @@ test:
 	$(PY) -m pytest
 
 test-fast:
-	$(PY) -m pytest tests/test_retry_ladder.py tests/test_story_engine.py tests/test_tool_agent.py 02_STORY_ENGINE/tests
+	$(PY) -m pytest tests/test_retry_ladder.py tests/test_story_engine.py tests/test_tool_agent.py tests/test_persistence_streaming.py 02_STORY_ENGINE/tests
 
 demo:
 	$(PY) 02_STORY_ENGINE/demo.py
@@ -29,6 +29,7 @@ demo:
 api:
 	@echo "Web 控制台: http://localhost:8000/   API 文档: http://localhost:8000/docs   API key: $${API_KEYS:-dev-key}"
 	APP_ENV=dev CELERY_TASK_ALWAYS_EAGER=true CELERY_BROKER_URL=memory:// CELERY_RESULT_BACKEND=cache+memory:// \
+	MOCK_STREAM_DELAY_SECONDS=$${MOCK_STREAM_DELAY_SECONDS:-0.03} \
 	LLM_PROVIDER=$${LLM_PROVIDER:-mock} QC_BACKEND=$${QC_BACKEND:-none} API_KEYS=$${API_KEYS:-dev-key} \
 	$(PY) -m uvicorn 13_INFRA.api.main:app --host 0.0.0.0 --port 8000 --reload
 

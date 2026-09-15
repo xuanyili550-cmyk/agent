@@ -7,7 +7,16 @@ LLM provider / 记忆存储 / 用量记账都按 settings 走，任务本身不�
 
 在流水线里的位置：这是第一环（run 状态 queued -> scripting -> scripted）。之后由编排层（13_INFRA.orchestration）
 根据 require_human_review 决定是停在 awaiting_review 等人工批准，还是直接派发 shot_task。
-所有 Agent 共用一个 context_id=run:<run_id> 的会话记忆，后面的 Agent 能看到前面 Agent 的产出。
+
+一个 run 对应两份持久化状态，互为备份（见 ARCHITECTURE 2.16）：
+1. **会话记忆** ``context_id = run:<run_id>``：所有 Agent 共用，存的是发给模型的 user/assistant 轮次，
+   用来保证后面的 Agent 看得到前面 Agent 的产出，也用于事后审计"当初模型看到了什么"。
+2. **LangGraph 检查点** ``thread_id = run:<run_id>``：存的是图的执行状态（跑完哪些节点、各节点产出的
+   强类型对象）。worker 崩在第 5 个节点时，Celery 重试会从第 5 个节点续跑，前 4 个节点的 LLM 开销不再重复；
+   已经跑完的 run 再被重试则直接跳过执行。两者用同一个 id，排查问题时能对上号。
+
+流式：用 ``stream_pipeline`` 按节点执行，每完成一个节点就把进度写进 ``PipelineRun.result["progress"]``，
+API 的 ``GET /pipelines/{run_id}/stream``（SSE）据此把进度实时推给前端，不用等整个阶段跑完。
 """
 
 from __future__ import annotations
@@ -22,9 +31,59 @@ from ..observability import PIPELINE_RUNS, get_logger
 from ..workers.celery_app import celery_app
 from ._common import build_conversation_store, build_llm_provider, make_usage_sink, mod
 
-__all__ = ["story_task", "run_story_stage"]
+__all__ = ["story_task", "run_story_stage", "pipeline_checkpointer"]
 
 log = get_logger("queue.story")
+
+# 故事图的六个节点，按执行顺序；SSE 进度条按它算百分比，前端不用自己写死一份
+STORY_NODES = ["story_bible", "season_arc", "characters", "episodes", "storyboard", "prompts"]
+
+
+def pipeline_checkpointer(settings, context_id: str):
+    """按配置构造 LangGraph checkpointer。
+
+    复用会话历史的存储后端（``build_conversation_store``）：生产是 Redis（多 worker 共享，
+    换机器重试也能续跑），本地是 SQLite / JSON 文件。``context_id`` 只用来打日志。
+    """
+    workflows = mod("02_STORY_ENGINE.workflows")
+    store = build_conversation_store(settings)
+    log.debug("故事阶段检查点存储", extra={"context_id": context_id, "store": type(store).__name__})
+    return workflows.build_checkpointer(store, lock_timeout=settings.llm_context_lock_timeout_seconds)
+
+
+def _progress_writer(run_id: str):
+    """返回 on_progress 回调：每完成一个节点就把进度写进 ``PipelineRun.result["progress"]``。
+
+    为什么写数据库而不是推消息队列：进度要能被任意一个 API 副本读到（SSE 连在哪台机器都行），
+    而且刷新页面后还能看到历史进度；写库是最简单又满足这两点的做法。
+    写库失败只告警不中断——进度是观测数据，不该让它拖垮真正的生产任务。
+    """
+
+    def on_progress(event: dict) -> None:
+        """把一条进度事件累加到 run.result.progress 里。"""
+        if event["event"] == "done":
+            return
+        entry = {"node": event.get("node"), "event": event["event"], "keys": event.get("keys", []), "counts": event.get("counts", {}), "ts": event["ts"]}
+        try:
+            with session_scope() as db:
+                run = db.get(PipelineRun, run_id)
+                if run is None:
+                    return
+                progress = list((run.result or {}).get("progress") or [])
+                progress.append(entry)
+                done = [p["node"] for p in progress if p["event"] == "node" and p.get("node")]
+                repo.update_run(
+                    db,
+                    run_id,
+                    stage=f"story:{entry['node']}" if entry.get("node") else "story",
+                    progress=progress,
+                    progress_nodes=done,
+                    progress_total=len(STORY_NODES),
+                )
+        except Exception as exc:
+            log.warning("写流水线进度失败", extra={"run_id": run_id, "error": str(exc)[:200]})
+
+    return on_progress
 
 
 def run_story_stage(run_id: str) -> Dict[str, Any]:
@@ -81,14 +140,25 @@ def run_story_stage(run_id: str) -> Dict[str, Any]:
         chief_editor=agent(agents.ChiefEditorAgent) if editorial else None,
         max_revision_rounds=int(params.get("max_revision_rounds", 2)),
     )
+    # 检查点和会话历史用同一个存储后端（Redis / SQLite / 本地文件，由 LLM_CONTEXT_* 决定），
+    # 用同一个 id（run:<run_id>）；关掉 STORY_CHECKPOINT_ENABLED 就退回无持久化的一次性执行。
+    checkpointer = pipeline_checkpointer(settings, context_id) if settings.story_checkpoint_enabled else None
     graph = pipeline.build_graph(
         bundle,
         num_characters=int(params.get("num_characters", 3)),
         num_scenes=int(params.get("num_scenes", 2)),
         episode_numbers=[int(n) for n in params.get("episode_numbers", [1])],
         prompt_mode=params.get("prompt_mode", "llm"),
+        checkpointer=checkpointer,
     )
-    state = graph.invoke({"idea": params["idea"], "target_duration_seconds": int(params.get("target_duration_seconds", 300))})
+    initial_state = {"idea": params["idea"], "target_duration_seconds": int(params.get("target_duration_seconds", 300))}
+    if checkpointer is None:
+        state = graph.invoke(initial_state)
+    else:
+        before = pipeline.graph_progress(graph, context_id)
+        if before["completed"]:
+            log.info("故事阶段从检查点续跑", extra={"run_id": run_id, "completed": before["completed"], "pending": before["pending"]})
+        state = pipeline.run_pipeline(graph, initial_state, context_id, on_progress=_progress_writer(run_id))
 
     with session_scope() as db:
         written = repo.persist_drama_state(db, project_id, state)

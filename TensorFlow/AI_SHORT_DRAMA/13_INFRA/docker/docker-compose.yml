@@ -21,6 +21,8 @@ x-app-env: &app-env
   # ToolAgent：工具调用轮次上限 + 允许在 worker 里自动执行的"需确认"工具白名单
   AGENT_MAX_TOOL_ROUNDS: ${AGENT_MAX_TOOL_ROUNDS:-5}
   AGENT_TOOL_ALLOWLIST: ${AGENT_TOOL_ALLOWLIST:-}
+  # LangGraph 检查点：worker 崩了重试从断点续跑（存储复用上面的 LLM_CONTEXT_REDIS_URL）
+  STORY_CHECKPOINT_ENABLED: ${STORY_CHECKPOINT_ENABLED:-true}
   IMAGE_BACKEND: ${IMAGE_BACKEND:-dummy}
   QC_BACKEND: ${QC_BACKEND:-clip}
   REQUIRE_HUMAN_REVIEW: ${REQUIRE_HUMAN_REVIEW:-true}

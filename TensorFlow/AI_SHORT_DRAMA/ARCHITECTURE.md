@@ -210,6 +210,41 @@ API key。三道护栏：`max_tool_rounds`（默认 5）到顶后要求直接作
 
 **为什么**：02 不依赖 prometheus_client，是纯库；指标是横切能力，做在粘合层而不是每个 Agent 里。
 
+### 2.16 一个 run 两份持久化状态：LangGraph 检查点 + 会话记忆，并存互备
+
+`02_STORY_ENGINE/workflows/checkpointing.py::StoreCheckpointSaver` 把 LangGraph 检查点写进项目已有的
+`ConversationStore` 抽象（Redis / SQLite / JSON 文件），`thread_id` 和会话记忆的 `context_id` 统一用
+`run:<run_id>`。检查点存的是**图的执行状态**，会话记忆存的是**发给模型的对话轮次**——两者都要有。
+
+`stream_pipeline()` 按检查点决定怎么跑：跑到 END 的 thread 直接返回存下来的 state（Celery 重试不重复
+烧钱）；断在某个节点的 thread **传 `None` 作为输入**续跑（LangGraph 的约定是「输入为 None 即从检查点
+继续」，传原始输入会被当成一次新执行从入口重来，这点很容易写错）。
+
+**为什么不用 langgraph-checkpoint-sqlite**：那是额外依赖，还会引入第二套存储配置。复用
+ConversationStore 意味着「会话历史存哪儿，检查点就存哪儿」，部署时只配一处，Redis 那份天然多 worker 共享。
+
+**手写时最容易漏的一点**：LangGraph 反序列化有白名单，且要求精确的 `(模块, 类名)` 对，模块前缀不匹配。
+不登记时它**静默降级成 dict**而不是报错，于是续跑时才在 `script.content` 上炸出 AttributeError。
+`allowed_checkpoint_types()` 按模块枚举实类解决这点；不用 `allowed_msgpack_modules=True`，因为检查点
+可能存在共享 Redis 里，能写 Redis 就能触发任意类的反序列化。
+
+### 2.17 流式是一条从 worker 到浏览器的完整链路，不是某一层的开关
+
+三段分别解决三个问题：
+
+1. **节点级**（`graph.stream(stream_mode="updates")`）：worker 每完成一个 LangGraph 节点就把进度写进
+   `PipelineRun.result["progress"]`。故事阶段要跑几分钟，以前 `invoke` 期间调用方完全看不到进展。
+2. **传输层**（`GET /pipelines/{id}/stream`，SSE）：API 轮询数据库、有变化就推。**为什么不让 worker 直连
+   浏览器**：worker 和 API 是不同进程（生产上不同机器），而进度必须让任意一个 API 副本都读到、刷新页面后
+   还能看到历史。数据库是这两点的最小公约数，省掉一整套 pub/sub 依赖。
+3. **token 级**（`LLMProvider.stream()` -> `ToolAgent.run_stream()` -> `POST .../assistant/stream`）：
+   默认实现是「假流式」（调 `complete()` 整段吐出），所以任何后端都能被流式调用方当成流式用；
+   Anthropic / OpenAI / 本地 transformers 各自覆盖成真增量。
+
+两个约束值得记住：**降级 provider 只在还没吐出任何内容时才切模型**——已经推了半句再换模型，用户会看到
+两个模型的输出被拼在一起，比直接失败更糟；**流式助理在 API 进程里直接跑**，因为经过队列就没法把 token
+送回这条 HTTP 连接，代价是占住一个工作线程，所以只给交互式使用，自动化流程仍走队列版。
+
 ## 3. 分层职责一览
 
 | 层 | 输入 | 输出 | 不该做的事 |

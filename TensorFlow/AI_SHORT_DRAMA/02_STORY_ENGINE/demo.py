@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -407,7 +408,11 @@ def _assistant_fixture(_system: str, user: str) -> str:
 
 
 def build_mock_provider() -> MockLLMProvider:
-    """构造带全部 fixture 的 mock provider；13_INFRA 的 LLM_PROVIDER=mock 也用它。"""
+    """构造带全部 fixture 的 mock provider；13_INFRA 的 LLM_PROVIDER=mock 也用它。
+
+    ``MOCK_STREAM_DELAY_SECONDS``：只影响流式调用的每块间隔，纯粹为了本地演示时能看清打字机效果
+    （mock 本身是瞬间返回的）。不设就是 0，测试速度不受影响。
+    """
     return MockLLMProvider(
         {
             DEFAULT_FIXTURE_KEY: _assistant_fixture,
@@ -423,7 +428,8 @@ def build_mock_provider() -> MockLLMProvider:
             "VideoPrompt": _video_prompt_fixture,
             "QCVerdict": _qc_verdict_fixture,
             "EditorialDecision": _editorial_fixture,
-        }
+        },
+        chunk_delay=float(os.environ.get("MOCK_STREAM_DELAY_SECONDS", "0")),
     )
 
 

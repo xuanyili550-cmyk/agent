@@ -15,9 +15,10 @@
 from __future__ import annotations
 
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Iterator, Literal, TypedDict
 
 # 向上找到项目根目录（含 03_STRUCTURED_DATA 的那一层），把 03_STRUCTURED_DATA 和 02_STORY_ENGINE
 # 都加进 sys.path，这样本文件才能用顶层包名 import schemas / agents / generators / planners
@@ -151,6 +152,7 @@ def build_graph(
     episode_number: int = 1,
     episode_numbers: list[int] | None = None,
     prompt_mode: PromptMode = "llm",
+    checkpointer=None,
 ):
     """组装并编译完整的 LangGraph 流水线图。
 
@@ -256,7 +258,109 @@ def build_graph(
     graph.add_edge("storyboard", "prompts")
     graph.add_edge("prompts", END)
 
-    return graph.compile()
+    # 传了 checkpointer 就开启持久化：每个节点执行完自动存一次 state，按 config 里的 thread_id 分会话。
+    # 重跑同一个 thread_id 时已完成的节点不会重算——故事阶段每个节点都是真金白银的 LLM 调用，
+    # worker 崩在第 5 个节点时这一条能省下前 4 个节点的全部开销。
+    return graph.compile(checkpointer=checkpointer) if checkpointer is not None else graph.compile()
+
+
+def thread_config(thread_id: str, **extra) -> dict:
+    """构造 LangGraph 的会话配置：``{"configurable": {"thread_id": ...}}``。
+
+    ``thread_id`` 是会话隔离的唯一依据：同一个 id 的多次调用共享检查点（能续跑、能回溯），
+    不同 id 之间完全隔离。本项目统一用 ``run:<run_id>``，和会话记忆的 context_id 对齐，
+    排查问题时两边能对上号。
+    """
+    return {"configurable": {"thread_id": thread_id, **extra}}
+
+
+def graph_progress(graph, thread_id: str) -> dict:
+    """读检查点，回答"这个会话跑到哪了"：已完成节点、待执行节点、是否已完成。
+
+    LangGraph 的每个快照带 ``next``（下一步要跑的节点）和 ``metadata["step"]``：
+    某个快照的 ``next`` 节点在更晚的快照里不再是 next，说明它已经跑完了；最新快照的
+    ``next`` 为空元组就代表整张图跑到了 END。
+
+    用途：Celery 重试时先看上次跑到哪，写进日志和 ``PipelineRun.result["progress"]``，
+    人能一眼看出这次是续跑还是从头开始。没有 checkpointer 或没有历史时各项为空。
+    """
+    if getattr(graph, "checkpointer", None) is None:
+        return {"completed": [], "pending": [], "finished": False, "steps": 0}
+    snapshots = [s for s in graph.get_state_history(thread_config(thread_id))]
+    if not snapshots:
+        return {"completed": [], "pending": [], "finished": False, "steps": 0}
+    latest = snapshots[0]  # get_state_history 是倒序，第一个最新
+    latest_step = latest.metadata.get("step", -1)
+    completed: list[str] = []
+    for snapshot in reversed(snapshots):  # 反过来就是执行顺序
+        step = snapshot.metadata.get("step", -1)
+        node = snapshot.next[0] if snapshot.next else None
+        # __start__ 是 LangGraph 的入口伪节点，不算业务节点；step == latest_step 的那个还没跑完
+        if node and node != "__start__" and step < latest_step and node not in completed:
+            completed.append(node)
+    return {"completed": completed, "pending": list(latest.next), "finished": not latest.next, "steps": max(latest_step, 0)}
+
+
+def stream_pipeline(graph, initial_state: dict, thread_id: str | None = None) -> Iterator[dict]:
+    """按节点逐步执行流水线，每跑完一个节点 yield 一条进度事件，最后一条是 ``event="done"``。
+
+    ``graph.stream(..., stream_mode="updates")`` 给出的是"这一步哪个节点写了哪些字段"，
+    正好可以直接转成给前端看的进度条。
+
+    为什么用 stream 而不是 invoke：故事阶段动辄几十次 LLM 调用、跑好几分钟，invoke 期间
+    调用方完全看不到进展，只能干等。改成流式后 worker 每完成一个节点就能落一次进度，
+    API 的 SSE 接口据此实时推给前端。
+
+    带 ``thread_id`` 且图有 checkpointer 时按检查点决定怎么跑（这是"可续跑"的关键）：
+    - 该会话已经跑到 END：不再执行，直接把存下来的 state 当结果返回（Celery 重试不会重复烧钱）；
+    - 该会话中途断在某个节点：**传 None 作为输入**继续跑——LangGraph 的约定是"输入为 None 即从
+      检查点续跑"，传原始输入会被当成一次新的执行从入口重新开始；
+    - 没有任何检查点：正常用 ``initial_state`` 起跑。
+    """
+    config = thread_config(thread_id) if thread_id else None
+    resumed_from: list[str] = []
+    graph_input: dict | None = initial_state
+    if config is not None and getattr(graph, "checkpointer", None) is not None:
+        snapshot = graph.get_state(config)
+        if snapshot.values:
+            if not snapshot.next:
+                yield {"event": "done", "index": 0, "node": None, "state": snapshot.values, "resumed": True, "skipped": True, "ts": time.time()}
+                return
+            graph_input = None  # 续跑
+            resumed_from = list(snapshot.next)
+    if resumed_from:
+        yield {"event": "resumed", "index": 0, "node": None, "pending": resumed_from, "ts": time.time()}
+    index = 0
+    for update in graph.stream(graph_input, config=config, stream_mode="updates"):
+        for node, payload in (update or {}).items():
+            index += 1
+            yield {
+                "event": "node",
+                "index": index,
+                "node": node,
+                # 只回字段名和条数，不回整份 state：state 里是几十个 pydantic 对象，塞进进度事件会非常大
+                "keys": sorted(payload.keys()) if isinstance(payload, dict) else [],
+                "counts": {k: len(v) for k, v in (payload or {}).items() if isinstance(v, list)} if isinstance(payload, dict) else {},
+                "ts": time.time(),
+            }
+    final = graph.get_state(config).values if config is not None else None
+    yield {"event": "done", "index": index + 1, "node": None, "state": final, "resumed": bool(resumed_from), "skipped": False, "ts": time.time()}
+
+
+def run_pipeline(graph, initial_state: dict, thread_id: str | None = None, on_progress=None) -> dict:
+    """跑完整条流水线并返回最终 state；``on_progress(event)`` 每产生一条进度事件回调一次。
+
+    带 thread_id 时天然可续跑（见 ``stream_pipeline``）；没有 checkpointer 时退化成普通 ``invoke``。
+    """
+    if thread_id is None or getattr(graph, "checkpointer", None) is None:
+        return graph.invoke(initial_state)
+    final: dict | None = None
+    for event in stream_pipeline(graph, initial_state, thread_id):
+        if event["event"] == "done":
+            final = event["state"]
+        if on_progress is not None:
+            on_progress(event)
+    return final if final is not None else graph.get_state(thread_config(thread_id)).values
 
 
 def _storyboard_episode(bundle: AgentBundle, episode: sch.Episode, script: sch.Script, num_scenes: int) -> tuple[list[sch.Scene], list[sch.Shot]]:
