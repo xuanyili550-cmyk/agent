@@ -18,6 +18,7 @@ HAS_FFMPEG = subprocess.run(["which", "ffmpeg"], capture_output=True).returncode
 
 
 def _manifest(tmp_path) -> Path:
+    """造一份最小可用的 EpisodeManifest 并落盘，返回 manifest 文件路径，给发布相关用例复用。"""
     em = importlib.import_module("10_EPISODES.episode_manifest")
     video = tmp_path / "ep.mp4"
     video.write_bytes(b"\x00" * 1024)
@@ -37,6 +38,8 @@ def _manifest(tmp_path) -> Path:
 
 
 def test_publish_dry_run_writes_records_and_manifest(tmp_path):
+    """验证 dry_run=True 时仍然会给每个平台写 PublishRecord、回写 manifest 里的发布状态——
+    dry-run 只是不真的调用平台 API，落库和 manifest 更新这两件事不能跳过。"""
     publish = importlib.import_module("13_INFRA.queue.publish_task")
     models = importlib.import_module("13_INFRA.database.models")
     session_mod = importlib.import_module("13_INFRA.database.session")
@@ -52,22 +55,30 @@ def test_publish_dry_run_writes_records_and_manifest(tmp_path):
 
 
 def test_youtube_fetch_status_maps_processing_states():
+    """验证 YouTube 客户端把 Data API 的 uploadStatus 正确映射成平台无关的 PublishStatus 枚举，
+    并且能把拒绝原因透传出来，供上层记录到 PublishRecord.error_message。"""
     cli = importlib.import_module("11_PUBLISH.publish_cli")
     yt = cli._load_client_module("youtube")
     client = yt.YouTubePublishClient()
 
     class FakeService:
+        """假的 YouTube Data API service：只实现 fetch_status 用到的 videos().list().execute() 链路。"""
+
         def __init__(self, upload_status):
+            """记住这次要返回的 uploadStatus，供 execute() 组装响应体。"""
             self.upload_status = upload_status
 
         def videos(self):
+            """真实 API 里 videos() 返回一个可继续链式调用的资源对象，这里直接返回自身。"""
             return self
 
         def list(self, part, id):
+            """记录本次查询的视频 id，方便断言/调试；返回自身以支持继续链式调用 execute()。"""
             self.vid = id
             return self
 
         def execute(self):
+            """返回和真实 API 结构一致的最小响应：一个带 uploadStatus/rejectionReason 的 items 列表。"""
             return {"items": [{"status": {"uploadStatus": self.upload_status, "rejectionReason": "copyright"}}]}
 
     client._service = FakeService("processed")
@@ -80,15 +91,21 @@ def test_youtube_fetch_status_maps_processing_states():
 
 
 def test_tiktok_fetch_status(monkeypatch):
+    """验证 TikTok 客户端把开放平台返回的 status 字符串映射成统一的 PublishStatus，
+    并能取出成片链接和失败原因。"""
     cli = importlib.import_module("11_PUBLISH.publish_cli")
     tk = cli._load_client_module("tiktok")
     client = tk.TikTokPublishClient(access_token="t")
 
     class Resp:
+        """假的 requests.Response：只需要 .json()，字段结构照抄 TikTok 开放平台的返回格式。"""
+
         def __init__(self, data):
+            """把要返回的业务数据存起来，包一层 {"data": ...} 是 TikTok 接口的统一信封格式。"""
             self._data = data
 
         def json(self):
+            """模拟 requests.Response.json()。"""
             return {"data": self._data}
 
     monkeypatch.setattr(tk.requests, "post", lambda *a, **k: Resp({"status": "PUBLISH_COMPLETE", "publicaly_available_post_id": [123]}))
@@ -99,6 +116,8 @@ def test_tiktok_fetch_status(monkeypatch):
 
 
 def test_publish_status_task_updates_record_and_manifest(tmp_path, monkeypatch):
+    """验证 publish_status_task 轮询到"已发布"之后，会同时更新数据库 PublishRecord 的
+    remote_url 和 manifest 文件里的状态——两处状态必须保持一致，下游发布看板才不会读到过期数据。"""
     publish = importlib.import_module("13_INFRA.queue.publish_task")
     models = importlib.import_module("13_INFRA.database.models")
     session_mod = importlib.import_module("13_INFRA.database.session")
@@ -111,7 +130,10 @@ def test_publish_status_task_updates_record_and_manifest(tmp_path, monkeypatch):
         publish_id = row.publish_id
 
     class FakeClient:
+        """假的平台发布客户端：固定返回"已发布"，跳过真实网络调用。"""
+
         def fetch_status(self, remote_id):
+            """直接返回已发布状态和观看链接，不关心传入的 remote_id。"""
             return em.PublishStatus.PUBLISHED, "https://youtu.be/vid1", None
 
     monkeypatch.setattr(publish, "_clients", lambda platforms: {"youtube": FakeClient()})
@@ -126,6 +148,8 @@ def test_publish_status_task_updates_record_and_manifest(tmp_path, monkeypatch):
 
 
 def test_analytics_ingest_and_snapshot(tmp_path):
+    """跑一遍 12_ANALYTICS 的完整链路：文件源导入事件（验证去重主键生效）、YouTube 指标源导入
+    （验证"同一天同一视频"是更新不是新增）、最后计算留存/收入/平台指标快照并核对结果数值。"""
     ingest = importlib.import_module("12_ANALYTICS.ingest")
     task = importlib.import_module("13_INFRA.queue.analytics_task")
     models = importlib.import_module("13_INFRA.database.models")
@@ -150,13 +174,18 @@ def test_analytics_ingest_and_snapshot(tmp_path):
         assert db.query(models.AnalyticsEvent).count() == 6
 
     class FakeYT:
+        """假的 YouTube Analytics Reports API：固定返回一行按天聚合的指标数据。"""
+
         def reports(self):
+            """真实 API 里 reports() 返回可继续链式调用的资源对象，这里直接返回自身。"""
             return self
 
         def query(self, **kw):
+            """接受任意查询参数（时间范围、维度等），返回自身以支持继续链式调用 execute()。"""
             return self
 
         def execute(self):
+            """返回和真实 API 结构一致的最小响应：列头 + 一行数据。"""
             return {
                 "columnHeaders": [{"name": n} for n in ("day", "video", "views", "likes", "comments", "shares", "estimatedMinutesWatched", "estimatedRevenue")],
                 "rows": [["2026-07-01", "vid1", 100, 5, 1, 2, 30.5, 0.42]],
@@ -177,10 +206,15 @@ def test_analytics_ingest_and_snapshot(tmp_path):
 
 
 def test_tiktok_source_batches_and_maps():
+    """验证 TikTok 指标源能把开放平台的视频列表响应，转换成统一的指标事件并按 video_episode_map
+    映射回内部 episode_id。"""
     ingest = importlib.import_module("12_ANALYTICS.ingest")
 
     class Resp:
+        """假的 requests.Response，只需要 .json()。"""
+
         def json(self):
+            """返回一条 TikTok 视频指标 + 一个占位的 error 字段（接口约定的成功标记）。"""
             return {"data": {"videos": [{"id": "v1", "view_count": 10, "like_count": 2}]}, "error": {"code": "ok"}}
 
     src = ingest.TikTokAnalyticsSource(video_episode_map={"v1": "EP1"}, access_token="t", http_post=lambda url, **kw: Resp())
@@ -193,6 +227,8 @@ def test_tiktok_source_batches_and_maps():
 
 @pytest.mark.skipif(not HAS_FFMPEG, reason="需要 ffmpeg")
 def test_assemble_renders_stills_with_dialogue(tmp_path):
+    """验证 09_POST.assemble 能把静态关键帧按镜头时长拼成视频、字幕时间轴与镜头顺序对齐，
+    且最终成片的分辨率、总时长、音轨都符合预期（真实调用 ffmpeg/ffprobe）。"""
     assemble = importlib.import_module("09_POST.assemble")
     imgs = []
     for i in range(2):

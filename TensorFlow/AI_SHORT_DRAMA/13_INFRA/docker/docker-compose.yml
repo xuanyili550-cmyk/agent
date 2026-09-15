@@ -16,6 +16,11 @@ x-app-env: &app-env
   ARTIFACTS_ROOT: /app/artifacts
   LLM_PROVIDER: ${LLM_PROVIDER:-local}
   LLM_MODEL: ${LLM_MODEL:-}
+  # 多模型降级：主模型限流/超时时按顺序切到这些备用模型（逗号分隔，留空不降级）
+  LLM_FALLBACK_MODELS: ${LLM_FALLBACK_MODELS:-}
+  # ToolAgent：工具调用轮次上限 + 允许在 worker 里自动执行的"需确认"工具白名单
+  AGENT_MAX_TOOL_ROUNDS: ${AGENT_MAX_TOOL_ROUNDS:-5}
+  AGENT_TOOL_ALLOWLIST: ${AGENT_TOOL_ALLOWLIST:-}
   IMAGE_BACKEND: ${IMAGE_BACKEND:-dummy}
   QC_BACKEND: ${QC_BACKEND:-clip}
   REQUIRE_HUMAN_REVIEW: ${REQUIRE_HUMAN_REVIEW:-true}

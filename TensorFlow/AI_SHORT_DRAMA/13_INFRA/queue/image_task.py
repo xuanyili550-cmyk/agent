@@ -1,3 +1,10 @@
+"""单张图像生成任务：调 07_GENERATION 的图像生成器出一张图并登记素材。
+
+和 shot_task 的区别：这里是"给一个 prompt 出一张图"的原子任务，不做 QC、不走重试阶梯，
+给 API 手工生图 / 角色定妆图 / 调试用；正式的镜头生产（图 -> QC -> 三级重试 -> 落库）走 shot_task。
+两者共用 ``resolve_character_assets`` 解析角色参考图和 LoRA，保证角色一致性逻辑只有一份。
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -32,12 +39,14 @@ def image_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
     image_generator_mod = mod("07_GENERATION.image.image_generator")
     asset_registry = mod("07_GENERATION.asset_registry")
 
+    # 后端选择：payload 指定 > settings.image_backend；"dummy" 走离线占位生成器（测试/无 GPU 环境）
     model = payload.get("model") or settings.image_backend
     if model and model != "dummy":
         generator = image_generator_mod.DiffusersImageGenerator(model_id_or_path=model)
     else:
         generator = image_generator_mod.DummyImageGenerator()
 
+    # 没给 reference_character_ids 时退回用 character_id 单个角色
     character_ids = list(payload.get("reference_character_ids") or ([payload["character_id"]] if payload.get("character_id") else []))
     with session_scope() as db:
         assets = resolve_character_assets(character_ids, db, project_id=payload.get("project_id"))
@@ -58,6 +67,7 @@ def image_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
     output_dir = Path(payload.get("output_dir") or settings.artifacts_root / "images")
     output_dir.mkdir(parents=True, exist_ok=True)
     asset_id = asset_registry.new_asset_id("img")
+    # 文件名优先用 shot_id，方便人在产物目录里按镜头找图；没有镜头时用素材 id
     file_name = f"{payload.get('shot_id') or asset_id}.png"
     file_path = output_dir / file_name
     image.save(file_path)
@@ -74,6 +84,7 @@ def image_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         license=payload.get("license"),
         created_at=asset_registry.now_iso(),
     )
+    # 双写：jsonl 账本是 07_GENERATION 离线也能用的记录，assets 表供 API / QC 关联查询
     asset_log_path = payload.get("asset_log_path") or str(output_dir.parent / "asset_records.jsonl")
     asset_registry.write_asset_record(record, asset_log_path)
     with session_scope() as db:

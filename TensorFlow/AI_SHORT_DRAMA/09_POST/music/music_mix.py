@@ -1,3 +1,9 @@
+"""背景音乐混音：把一条 BGM 压低音量、加淡入淡出后垫在成片已有的对白/音效音轨下面。
+
+在 render_episode 里位于字幕硬烧之后、音效叠加之前。视频流原样复制（-c:v copy），只重编码音频，
+所以这一步很快，也不会二次损失画质。
+"""
+
 from __future__ import annotations
 
 import subprocess
@@ -19,11 +25,10 @@ def mix_bgm(
     fade_out_sec: float = 2.0,
     loop_bgm: bool = True,
 ) -> Path:
-    """Mixes a background music track under a video's existing dialogue/sfx audio.
+    """把背景音乐混到视频已有的对白/音效音轨下面。
 
-    The BGM is attenuated (``bgm_volume_db``, typically negative) relative to dialogue,
-    faded in/out, looped to cover the video duration if shorter, trimmed to match the
-    video duration, then combined with the video's original audio via ffmpeg's amix.
+    BGM 相对对白衰减 ``bgm_volume_db``（通常是负数，默认 -18 dB 让人声始终清晰），做淡入淡出，
+    比视频短时循环补齐，再截到视频时长，最后用 ffmpeg 的 amix 与原始音频合成。
     """
     video_path = Path(video_path)
     bgm_path = Path(bgm_path)
@@ -35,13 +40,14 @@ def mix_bgm(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     duration = _probe_duration(video_path)
-    fade_out_start = max(duration - fade_out_sec, 0.0)
+    fade_out_start = max(duration - fade_out_sec, 0.0)  # 淡出要在视频结束前 fade_out_sec 秒开始
 
     cmd = ["ffmpeg", "-y", "-i", str(video_path)]
     if loop_bgm:
-        cmd += ["-stream_loop", "-1"]
+        cmd += ["-stream_loop", "-1"]  # -1 = 无限循环，放在 BGM 的 -i 之前才对该输入生效；长度靠后面的 -t 截断
     cmd += ["-i", str(bgm_path)]
 
+    # amix 的 duration=first 让输出时长跟随第一路（对白）；dropout_transition=0 避免某路先结束时 amix 自动拉高剩余音量
     filter_complex = (
         f"[0:a]volume={_db_to_linear(dialogue_volume_db):.6f}[dlg];"
         f"[1:a]volume={_db_to_linear(bgm_volume_db):.6f},"
@@ -57,11 +63,11 @@ def mix_bgm(
         "0:v",
         "-map",
         "[outa]",
-        "-c:v",
+        "-c:v",  # 视频不动，只重编码音频
         "copy",
         "-c:a",
         "aac",
-        "-t",
+        "-t",  # 双保险：即使 BGM 无限循环，输出也严格截到视频时长
         f"{duration:.3f}",
         str(output_path),
     ]
@@ -72,13 +78,14 @@ def mix_bgm(
 
 
 def _probe_duration(path: Path) -> float:
+    """用 ffprobe 读媒体文件总时长（秒）；输出为空时返回 0.0。"""
     cmd = [
         "ffprobe",
         "-v",
         "error",
         "-show_entries",
         "format=duration",
-        "-of",
+        "-of",  # 只打印数值本身，不带 key 和 [FORMAT] 包裹，方便直接 float()
         "default=noprint_wrappers=1:nokey=1",
         str(path),
     ]
@@ -87,4 +94,5 @@ def _probe_duration(path: Path) -> float:
 
 
 def _db_to_linear(db: float) -> float:
+    """分贝 -> 线性增益（ffmpeg volume 滤镜要的是倍数）：0 dB = 1.0，-6 dB ≈ 0.5，-18 dB ≈ 0.126。"""
     return 10 ** (db / 20.0)

@@ -1,4 +1,11 @@
+"""队列任务包：把所有 Celery 任务集中导出，API 路由和编排层从这里 import。
+
+任务按资源类型路由到不同队列（见 workers/celery_app.py 的 task_routes）：
+llm / image / video / tts / lipsync 是 GPU 队列，qc 队列跑 CPU 型的编排、渲染、发布、分析任务。
+"""
+
 from .analytics_task import analytics_task
+from .assistant_task import assistant_task
 from .image_task import image_task
 from .lipsync_task import lipsync_task
 from .llm_task import llm_task
@@ -13,6 +20,7 @@ from .video_task import video_task
 
 __all__ = [
     "llm_task",
+    "assistant_task",
     "image_task",
     "video_task",
     "tts_task",

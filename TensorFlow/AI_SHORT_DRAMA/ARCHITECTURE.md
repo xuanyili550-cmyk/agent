@@ -167,6 +167,49 @@ request_id、访问日志、Prometheus、限流。`13_INFRA/config.py`：唯一�
 放在基类/中间件里，新加一个任务天然就有；而且"忘了配鉴权"这类问题应该是显性故障——
 `API_KEYS` 没配时接口返回 503，而不是静默放行。
 
+### 2.12 Agent 的工具层：签名即 schema，副作用工具必须过确认门
+
+`02_STORY_ENGINE/agents/tools.py::ToolRegistry` 用装饰器把普通函数注册成工具：参数 JSON Schema
+从函数签名 + 类型标注自动生成（pydantic `create_model`，`extra="forbid"`），docstring 就是给模型看的
+说明。`registry.call()` 永远返回 `ToolResult`（success / error / denied / invalid_args / not_found），
+不抛异常——失败原因要回灌给模型让它换个做法。`requires_confirmation=True` 的工具走 `ConfirmationGate`：
+默认 `AutoDenyGate` 一律拒绝，生产用 `AllowlistGate`（`AGENT_TOOL_ALLOWLIST`），本地用 `ConsoleGate`。
+
+**为什么**：Agent 能做什么取决于给了它什么工具，工具的边界就是安全边界。手写一份和代码不同步的
+schema 迟早会漂移；让模型在没人看着的时候执行写库/发布/标记这类操作，出事时没人能解释。
+"默认拒绝"比"默认放行"多一步配置，但少一次事故。
+
+### 2.13 工具循环 Agent：轮次硬上限 + 重复检测，中间轮次不进长期记忆
+
+`agents/tool_agent.py::ToolAgent.run()` 是"规划 -> 调工具 -> 观察 -> 再规划"的循环。协议做在
+prompt + JSON 解析层（每轮只输出 `{"action": "tool"|"final", ...}`），四种 provider 通用，测试不需要
+API key。三道护栏：`max_tool_rounds`（默认 5）到顶后要求直接作答；连续 `repeat_limit` 次相同
+(工具, 参数) 视为原地打转；两者之后模型仍要调工具就抛 `AgentLoopError` 交给任务层。带 memory 时
+只把 (问题, 最终答案) 记进历史，中间的工具往返不落长期记忆。`DramaAssistantAgent` 是第一个实例：
+拿着查角色 / 查剧本 / 跑硬校验 / 标记人工复核这组工具，在一次运行的产出上回答问题。
+
+**为什么**：无限循环和上下文爆炸是生产 Agent 最常见的两种事故。前者靠"上限 + 重复检测"，
+后者靠"中间轮次不进历史"——一次 run 里的工具输出动辄几 KB，全记进历史几次提问后就把上下文撑爆。
+
+### 2.14 多模型降级：主模型不可用自动切备用，带熔断冷却
+
+`agents/fallback_provider.py::FallbackProvider` 把多个 provider 串成一个：只对 `TransientLLMError`
+（限流/超时/5xx，SDK 自带重试已耗尽）和 `NotConfiguredError` 降级；失败的 provider 进入
+`cooldown_seconds` 冷却期直接跳过，到期自动恢复尝试主模型；上下文预算取所有 provider 的最小值。
+配置一行：`LLM_FALLBACK_MODELS=gpt-4o-mini,microsoft/Phi-3.5-mini-instruct`。每次降级计入
+`drama_llm_fallback_total`。
+
+**为什么**：任何一家 API 都会有限流和故障窗口，让整条流水线跟着挂不可接受。只对瞬时错误降级是
+关键——JSON 校验失败这类业务错误换模型只会把 prompt 的问题藏起来。
+
+### 2.15 四大监控指标：token / 工具成功率 / 执行时间 / 错误率
+
+`13_INFRA/observability/metrics.py` 里每项都有 Prometheus 指标，`four_key_metrics()` 把它们汇总成
+一个 JSON（`GET /metrics/summary`）。Agent 侧只暴露回调（`usage_sink` / `tool_call_sink` / `run_sink` /
+`on_fallback`），`13_INFRA/queue/_common.py::instrument_tool_agent` 一次接全。
+
+**为什么**：02 不依赖 prometheus_client，是纯库；指标是横切能力，做在粘合层而不是每个 Agent 里。
+
 ## 3. 分层职责一览
 
 | 层 | 输入 | 输出 | 不该做的事 |

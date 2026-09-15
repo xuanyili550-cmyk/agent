@@ -1,3 +1,9 @@
+"""独立 QC 任务：对一个已生成的素材跑 08_QC 全套门禁并落库。
+
+镜头生产（shot_task）内部已经内嵌了 QC + 重试阶梯，不经过这个任务；这里给 API 手工触发 QC、
+对视频/音频素材补检、或事后复核用。判定结果同时进 Prometheus（QC_DECISIONS）和 qc_reports 表。
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -23,6 +29,7 @@ def qc_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
        "video_path": "...", "audio_path": "...", "attempt": 1}
     """
     qc_report = mod("08_QC.reports.qc_report")
+    # attempt 是给落库用的元数据，不是 run_full_qc 的参数，先 pop 掉再把剩余 payload 原样透传
     attempt = int(payload.pop("attempt", 1))
     report = qc_report.run_full_qc(**payload)
     QC_DECISIONS.labels(report.decision.value).inc()

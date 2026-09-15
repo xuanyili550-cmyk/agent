@@ -1,3 +1,9 @@
+"""/episodes 路由：剧集的 CRUD + 剧本查看 + 单集人工审校。
+
+除了基础 CRUD，这里还提供审核页面需要的两个接口：``GET /{id}/script`` 把剧本正文、结构化数据和
+AI 编审判定一起返回；``POST /{id}/review`` 让人工逐集批准/打回（批量放行走 /pipelines/{run_id}/approve）。
+"""
+
 from __future__ import annotations
 
 from typing import List
@@ -16,6 +22,7 @@ router = APIRouter(prefix="/episodes", tags=["episodes"], dependencies=[Depends(
 
 @router.post("", response_model=EpisodeRead, status_code=201)
 def create_episode(payload: EpisodeCreate, db: Session = Depends(get_db)) -> Episode:
+    """手工创建剧集（流水线跑出来的集由 story_task 直接落库，不走这里）；project 不存在返回 404。"""
     if db.get(Project, payload.project_id) is None:
         raise HTTPException(status_code=404, detail="Project not found")
     episode = Episode(
@@ -32,11 +39,13 @@ def create_episode(payload: EpisodeCreate, db: Session = Depends(get_db)) -> Epi
 
 @router.get("", response_model=List[EpisodeRead])
 def list_episodes(response: Response, db: Session = Depends(get_db), page: Page = Depends(page_params)) -> List[Episode]:
+    """分页列出剧集，按创建时间倒序。"""
     return paginate(db.query(Episode).order_by(Episode.created_at.desc()), page, response)
 
 
 @router.get("/{episode_id}", response_model=EpisodeRead)
 def get_episode(episode_id: str, db: Session = Depends(get_db)) -> Episode:
+    """按 id 取单集元数据（不含剧本正文，正文走 /script），不存在返回 404。"""
     episode = db.get(Episode, episode_id)
     if episode is None:
         raise HTTPException(status_code=404, detail="Episode not found")
@@ -45,6 +54,7 @@ def get_episode(episode_id: str, db: Session = Depends(get_db)) -> Episode:
 
 @router.delete("/{episode_id}", status_code=204)
 def delete_episode(episode_id: str, db: Session = Depends(get_db)) -> None:
+    """删除剧集，成功返回 204。"""
     episode = db.get(Episode, episode_id)
     if episode is None:
         raise HTTPException(status_code=404, detail="Episode not found")
@@ -58,6 +68,7 @@ def get_episode_script(episode_id: str, db: Session = Depends(get_db)) -> dict:
     episode = db.get(Episode, episode_id)
     if episode is None:
         raise HTTPException(status_code=404, detail="Episode not found")
+    # 直接返回 dict 而不定义 response_model：data/script/editorial 都是自由结构的 JSON 列，schema 随 story engine 演进
     return {
         "episode": episode.data,
         "script": episode.script,
@@ -73,6 +84,7 @@ def review_episode(episode_id: str, payload: EpisodeReviewRequest, db: Session =
     episode = db.get(Episode, episode_id)
     if episode is None:
         raise HTTPException(status_code=404, detail="Episode not found")
+    # 这里只改审核状态，不触发生产；真正入队要调 /pipelines/{run_id}/approve
     episode.review_status = payload.decision
     episode.review_notes = payload.notes
     db.commit()

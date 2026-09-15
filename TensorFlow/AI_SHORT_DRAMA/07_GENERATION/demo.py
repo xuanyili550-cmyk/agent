@@ -1,12 +1,12 @@
-"""
-End-to-end offline smoke test: read Shot JSON -> build an image prompt ->
-produce a placeholder image asset -> write an asset record.
+"""端到端离线冒烟测试：读 Shot JSON -> 拼图像 prompt -> 生成占位图素材 -> 写素材记录。
 
-No real model weights or API keys are used -- DummyImageGenerator (see
-07_GENERATION/image/image_generator.py) draws a labelled placeholder PNG
-instead of running a diffusion pipeline. Run directly:
+不使用任何真实模型权重或 API key——DummyImageGenerator（见 07_GENERATION/image/image_generator.py）
+画一张带文字标注的占位 PNG，替代真正的扩散模型推理。直接运行：
 
   python demo.py
+
+流水线位置：模拟"03_STRUCTURED_DATA 的结构化镜头 -> 07_GENERATION 生成 -> asset_registry 登记"
+这一小段，用来在没有 GPU / 网络的机器上验证数据结构、文件布局和素材台账能否跑通。
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from pathlib import Path
 GENERATION_ROOT = Path(__file__).resolve().parent
 STRUCTURED_DATA_ROOT = GENERATION_ROOT.parent / "03_STRUCTURED_DATA"
 
+# 目录名以数字开头不是合法包名，只能通过 sys.path 让下面的裸模块名 import 生效
 sys.path.insert(0, str(GENERATION_ROOT))
 sys.path.insert(0, str(GENERATION_ROOT / "image"))
 sys.path.insert(0, str(STRUCTURED_DATA_ROOT))
@@ -38,11 +39,9 @@ OUTPUT_DIR = GENERATION_ROOT / "demo_outputs"
 IMAGES_DIR = OUTPUT_DIR / "images"
 ASSET_LOG_PATH = OUTPUT_DIR / "asset_records.jsonl"
 
-# Stand-in for what the Story Engine (02_STORY_ENGINE) would eventually write
-# to 03_STRUCTURED_DATA/shots.json + prompts.json. Purely synthetic, no real
-# story content. Uses the canonical Shot/ImagePrompt schemas from
-# 03_STRUCTURED_DATA/schemas.py -- Shot itself carries no prompt/style text,
-# that lives on the separate ImagePrompt record keyed by shot_id.
+# 顶替故事引擎（02_STORY_ENGINE）将来写入 03_STRUCTURED_DATA/shots.json + prompts.json 的内容。
+# 纯合成数据，没有真实剧情。使用 03_STRUCTURED_DATA/schemas.py 里的标准 Shot/ImagePrompt 模型——
+# Shot 本身不带 prompt/风格文本，那些放在按 shot_id 关联的独立 ImagePrompt 记录上。
 SAMPLE_SHOTS: list[tuple[Shot, ImagePrompt]] = [
     (
         Shot(
@@ -100,6 +99,7 @@ SAMPLE_SHOTS: list[tuple[Shot, ImagePrompt]] = [
 
 
 def main() -> None:
+    """遍历合成镜头：为每个镜头生成一张占位图、落盘并写一条素材记录。"""
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     generator = DummyImageGenerator()
 
@@ -107,6 +107,7 @@ def main() -> None:
 
     for shot, image_prompt in SAMPLE_SHOTS:
         prompt = image_prompt.prompt_text
+        # 由镜头 ID 派生 seed：同一镜头每次 demo 得到的占位图颜色稳定，便于肉眼对比
         seed = abs(hash(shot.id)) % (2**31)
 
         image = generator.generate(prompt=prompt, seed=seed, width=512, height=512)

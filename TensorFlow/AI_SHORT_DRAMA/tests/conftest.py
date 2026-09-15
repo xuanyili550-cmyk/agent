@@ -47,11 +47,13 @@ import pytest  # noqa: E402
 
 @pytest.fixture(scope="session")
 def api_headers() -> dict[str, str]:
+    """给测试用的 API Key 请求头：取环境变量 API_KEYS 里的第一个 key，供 TestClient 统一带上。"""
     return {"X-API-Key": os.environ["API_KEYS"].split(",")[0]}
 
 
 @pytest.fixture(scope="session")
 def tmp_root() -> Path:
+    """本次测试会话的临时根目录（存储/产物/上下文都在它下面），测试里要核对落盘路径时可以直接用。"""
     return Path(_TMP)
 
 

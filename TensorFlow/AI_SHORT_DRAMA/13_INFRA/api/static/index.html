@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 短剧控制台</title>
+<!-- 内联 SVG favicon：避免浏览器再去请求 /favicon.ico 得到 404 -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%8E%AC%3C/text%3E%3C/svg%3E">
+<!--
+  AI_SHORT_DRAMA Web 控制台：零构建、零依赖的单文件页面，由 FastAPI 直接托管（GET / 或 GET /ui）。
+  覆盖平台的全部接口：项目 -> 流水线（创意 -> 剧本 -> 编审 -> 人工审核 -> 生产）-> 制片助理 Agent -> 监控 -> 裸任务。
+  所有请求都走同源 fetch，带 X-API-Key 头；key 只存在浏览器 localStorage，不会写进页面代码。
+-->
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --line: #e3e6eb; --text: #1f2430; --muted: #6b7280;
+    --primary: #2f6fed; --primary-dark: #1f56c4; --ok: #16a34a; --warn: #d97706; --bad: #dc2626; --info: #7c3aed;
+    --radius: 10px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; color: var(--text); background: var(--bg); }
+  a { color: var(--primary); }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 17px; margin: 0; white-space: nowrap; }
+  header .conn { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+  header input { width: 220px; }
+  .layout { display: grid; grid-template-columns: 180px 1fr; min-height: calc(100vh - 57px); }
+  nav { background: var(--panel); border-right: 1px solid var(--line); padding: 12px 0; }
+  nav button { display: block; width: 100%; text-align: left; padding: 10px 18px; border: 0; background: none; font-size: 14px; color: var(--text); cursor: pointer; border-left: 3px solid transparent; }
+  nav button.active { border-left-color: var(--primary); background: #eef3ff; color: var(--primary-dark); font-weight: 600; }
+  main { padding: 20px; max-width: 1400px; }
+  section.page { display: none; }
+  section.page.active { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+  .card h2 .spacer { flex: 1; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 1000px) { .grid2, .grid4 { grid-template-columns: 1fr; } .layout { grid-template-columns: 1fr; } nav { display: flex; overflow-x: auto; } nav button { width: auto; border-left: 0; border-bottom: 3px solid transparent; } nav button.active { border-bottom-color: var(--primary); } }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input, select, textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font: inherit; background: #fff; color: var(--text); }
+  textarea { min-height: 70px; resize: vertical; font-family: inherit; }
+  textarea.mono { font-family: var(--mono); font-size: 12px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .row > div { flex: 1; min-width: 120px; }
+  .row > div.narrow { flex: 0 0 110px; }
+  button.btn { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--text); cursor: pointer; font: inherit; white-space: nowrap; }
+  button.btn:hover { border-color: #c9cfd8; background: #fafbfc; }
+  button.btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  button.btn.primary:hover { background: var(--primary-dark); }
+  button.btn.danger { color: var(--bad); border-color: #f3c2c2; }
+  button.btn.ok { color: var(--ok); border-color: #bfe6cc; }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover { background: #f7f9fc; }
+  tr.selected { background: #eef3ff; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: #eef0f3; color: var(--muted); white-space: nowrap; }
+  .badge.ok { background: #e6f6ec; color: var(--ok); }
+  .badge.warn { background: #fff4e0; color: var(--warn); }
+  .badge.bad { background: #fde8e8; color: var(--bad); }
+  .badge.info { background: #f0e9ff; color: var(--info); }
+  .badge.run { background: #e5edff; color: var(--primary-dark); }
+  .muted { color: var(--muted); }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .id { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  pre { background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow: auto; font-size: 12px; max-height: 420px; margin: 0; white-space: pre-wrap; word-break: break-word; }
+  pre.light { background: #f8fafc; color: var(--text); border: 1px solid var(--line); }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin: 6px 0; }
+  .stat { text-align: center; padding: 14px 8px; }
+  .stat .v { font-size: 26px; font-weight: 700; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .chat { display: flex; flex-direction: column; gap: 10px; max-height: 560px; overflow: auto; padding: 4px; }
+  .msg { padding: 10px 12px; border-radius: 10px; max-width: 92%; }
+  .msg.user { align-self: flex-end; background: #e5edff; }
+  .msg.bot { align-self: flex-start; background: #f3f4f6; }
+  .msg .steps { margin-top: 8px; font-size: 12px; }
+  .msg .step { display: flex; gap: 8px; align-items: center; padding: 3px 0; flex-wrap: wrap; }
+  .empty { color: var(--muted); padding: 20px; text-align: center; }
+  #toast { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+  .toast { background: #1f2430; color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 13px; max-width: 420px; box-shadow: 0 6px 20px rgba(0,0,0,.2); }
+  .toast.bad { background: var(--bad); }
+  .toast.ok { background: var(--ok); }
+  .modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.45); display: none; align-items: center; justify-content: center; z-index: 8; padding: 20px; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #fff; border-radius: 12px; width: min(960px, 100%); max-height: 90vh; overflow: auto; padding: 20px; }
+  .modal h3 { margin: 0 0 10px; }
+  .kv { display: grid; grid-template-columns: 110px 1fr; gap: 4px 10px; font-size: 13px; }
+  .kv b { color: var(--muted); font-weight: 500; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; margin-right: 6px; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 AI 短剧控制台</h1>
+  <span class="muted" id="envLabel"></span>
+  <div class="conn">
+    <span id="connDot" class="dot"></span><span id="connText" class="muted">未连接</span>
+    <input id="apiKey" type="password" placeholder="X-API-Key（本地默认 dev-key）">
+    <button class="btn primary" id="btnConnect">连接</button>
+    <a class="btn" href="/docs" target="_blank" style="text-decoration:none">API 文档</a>
+  </div>
+</header>
+
+<div class="layout">
+  <nav>
+    <button data-page="pipelines" class="active">流水线</button>
+    <button data-page="assistant">制片助理</button>
+    <button data-page="projects">项目</button>
+    <button data-page="metrics">监控指标</button>
+    <button data-page="tasks">单步任务</button>
+  </nav>
+
+  <main>
+    <!-- ================= 流水线 ================= -->
+    <section class="page active" id="page-pipelines">
+      <div class="card">
+        <h2>新建流水线：一句创意 → 剧本 → AI 编审 → 人工审核 → 镜头 → 成片 → 发布</h2>
+        <div class="row">
+          <div><label>项目</label><select id="pProject"></select></div>
+          <div class="narrow"><label>角色数</label><input id="pChars" type="number" value="3" min="1" max="6"></div>
+          <div class="narrow"><label>每集场次</label><input id="pScenes" type="number" value="2" min="1" max="8"></div>
+          <div class="narrow"><label>集号（逗号分隔）</label><input id="pEpisodes" value="1"></div>
+          <div class="narrow"><label>目标时长(秒)</label><input id="pDuration" type="number" value="300" min="60" max="600"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div class="narrow"><label>提示词生成</label><select id="pPromptMode"><option value="llm">llm（质量高）</option><option value="template" selected>template（零成本）</option></select></div>
+          <div class="narrow"><label>章节规划</label><select id="pPlanner"><option value="llm">llm</option><option value="rule" selected>rule（规则）</option></select></div>
+          <div class="narrow"><label>AI 编审</label><select id="pEditorial"><option value="true" selected>开</option><option value="false">关</option></select></div>
+          <div class="narrow"><label>最多修订轮</label><input id="pRounds" type="number" value="2" min="0" max="5"></div>
+        </div>
+        <div style="margin-top:10px"><label>故事创意</label><textarea id="pIdea">豪门千金重生复仇，携手冷峻总裁夺回家族企业</textarea></div>
+        <div class="row" style="margin-top:10px"><div></div><button class="btn primary" id="btnCreateRun">启动流水线</button></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h2>运行列表 <span class="spacer"></span>
+            <select id="runStatusFilter" style="width:160px">
+              <option value="">全部状态</option><option>queued</option><option>scripting</option><option>awaiting_review</option>
+              <option>producing</option><option>rendering</option><option>done</option><option>failed</option><option>rejected</option>
+            </select>
+            <button class="btn" id="btnRefreshRuns">刷新</button>
+          </h2>
+          <div id="runList"><div class="empty">连接后加载</div></div>
+        </div>
+        <div class="card" id="runDetailCard">
+          <h2>运行详情 <span class="spacer"></span><span id="runPolling" class="muted"></span><button class="btn" id="btnRefreshRun" disabled>刷新</button></h2>
+          <div id="runDetail"><div class="empty">在左侧选择一条运行</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 制片助理 ================= -->
+    <section class="page" id="page-assistant">
+      <div class="card">
+        <h2>制片助理 Agent（带工具循环：规划 → 查资料 → 硬校验 → 标记 → 汇报）
+          <span class="spacer"></span>
+          <span class="muted">当前运行：</span><span id="aRunLabel" class="id">未选择</span>
+        </h2>
+        <div class="row">
+          <div><label>运行（先在"流水线"页选一条，或在这里选）</label><select id="aRun"></select></div>
+          <div class="narrow"><label>会话 id（可选）</label><input id="aContext" placeholder="默认 assistant:<run_id>"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <div><label>问题</label><input id="aQuestion" value="帮我检查第 1 集有没有引用错误，有问题就标记人工复核。"></div>
+          <button class="btn primary" id="btnAsk">提问</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn" data-q="列出全部角色和他们的定位。">列出角色</button>
+          <button class="btn" data-q="第 1 集有几场几个镜头，总时长和目标时长差多少？">统计镜头</button>
+          <button class="btn" data-q="把第 1 集的剧本前 500 字给我，并说说钩子够不够强。">看剧本</button>
+          <button class="btn" data-q="帮我检查第 1 集有没有引用错误，有问题就标记人工复核。">检查引用</button>
+        </div>
+        <p class="muted" style="margin:8px 0 0">标记人工复核是有副作用的工具，需要过确认门：服务端 <code>AGENT_TOOL_ALLOWLIST</code> 没放行时 Agent 会告诉你"未获批准"。</p>
+      </div>
+      <div class="card">
+        <h2>对话 <span class="spacer"></span><button class="btn" id="btnClearChat">清空</button></h2>
+        <div class="chat" id="chat"><div class="empty">还没有提问</div></div>
+      </div>
+    </section>
+
+    <!-- ================= 项目 ================= -->
+    <section class="page" id="page-projects">
+      <div class="grid2">
+        <div class="card">
+          <h2>新建项目</h2>
+          <div><label>名称</label><input id="projName" placeholder="例如：重生复仇系列"></div>
+          <div style="margin-top:8px"><label>描述</label><textarea id="projDesc"></textarea></div>
+          <div class="row" style="margin-top:10px"><div></div><button class="btn primary" id="btnCreateProject">创建</button></div>
+        </div>
+        <div class="card">
+          <h2>项目列表 <span class="spacer"></span><button class="btn" id="btnRefreshProjects">刷新</button></h2>
+          <div id="projectList"><div class="empty">连接后加载</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>项目产出 <span class="spacer"></span><span class="id" id="projSelLabel"></span></h2>
+        <div class="grid2">
+          <div><h3 style="font-size:14px;margin:0 0 8px">角色</h3><div id="projCharacters"><div class="empty">选择一个项目</div></div></div>
+          <div><h3 style="font-size:14px;margin:0 0 8px">剧集</h3><div id="projEpisodes"><div class="empty">选择一个项目</div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= 监控 ================= -->
+    <section class="page" id="page-metrics">
+      <div class="card">
+        <h2>四大监控指标（本进程启动以来累计） <span class="spacer"></span>
+          <label style="display:inline;margin:0"><input type="checkbox" id="mAuto" style="width:auto"> 每 5 秒自动刷新</label>
+          <button class="btn" id="btnRefreshMetrics">刷新</button>
+          <a class="btn" href="/metrics" target="_blank" style="text-decoration:none">Prometheus 原始数据</a>
+        </h2>
+        <div class="grid4">
+          <div class="card stat"><div class="v" id="mTokens">–</div><div class="k">Token 消耗（输入 + 输出）</div></div>
+          <div class="card stat"><div class="v" id="mToolRate">–</div><div class="k">工具调用成功率</div></div>
+          <div class="card stat"><div class="v" id="mTaskTime">–</div><div class="k">任务平均执行时间</div></div>
+          <div class="card stat"><div class="v" id="mErrRate">–</div><div class="k">任务错误率</div></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h2>Token / 成本（按模型）</h2><div id="mByModel"></div></div>
+        <div class="card"><h2>工具调用（按工具）</h2><div id="mByTool"></div></div>
+        <div class="card"><h2>执行时间（按任务）</h2><div id="mByTask"></div></div>
+        <div class="card"><h2>错误 / 降级 / Agent 停止原因</h2><div id="mErrors"></div></div>
+      </div>
+    </section>
+
+    <!-- ================= 单步任务 ================= -->
+    <section class="page" id="page-tasks">
+      <div class="grid2">
+        <div class="card">
+          <h2>入队单个任务（调试某一步能力）</h2>
+          <div class="row">
+            <div><label>队列</label><select id="tQueue"></select></div>
+            <button class="btn" id="btnTaskExample">填入示例 payload</button>
+          </div>
+          <div style="margin-top:8px"><label>payload（JSON）</label><textarea id="tPayload" class="mono" style="min-height:160px">{}</textarea></div>
+          <div class="row" style="margin-top:10px"><div></div><button class="btn primary" id="btnEnqueue">入队</button></div>
+          <details><summary>该队列的 JSON Schema</summary><pre class="light" id="tSchema"></pre></details>
+        </div>
+        <div class="card">
+          <h2>任务状态</h2>
+          <div class="row"><div><label>task_id</label><input id="tTaskId"></div><button class="btn" id="btnTaskStatus">查询</button></div>
+          <pre class="light" id="tResult" style="margin-top:10px">–</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-bg" id="modal"><div class="modal"><div class="row"><h3 id="modalTitle" style="flex:1"></h3><button class="btn" id="modalClose">关闭</button></div><div id="modalBody"></div></div></div>
+<div id="toast"></div>
+
+<script>
+/* ============================ 基础设施：请求 / 提示 / 工具函数 ============================ */
+const $ = (id) => document.getElementById(id);
+const state = { runs: [], projects: [], currentRun: null, pollTimer: null, metricsTimer: null, schemas: {} };
+
+function toast(msg, kind = "") {
+  const el = document.createElement("div");
+  el.className = "toast " + kind; el.textContent = msg;
+  $("toast").appendChild(el);
+  setTimeout(() => el.remove(), kind === "bad" ? 6000 : 3000);
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function short(id) { return id && id.length > 14 ? id.slice(0, 8) + "…" + id.slice(-4) : (id || ""); }
+function fmtTime(s) { return s ? new Date(s).toLocaleString("zh-CN", { hour12: false }) : ""; }
+function pretty(o) { return JSON.stringify(o, null, 2); }
+
+// 所有请求走这里：带 API key，非 2xx 抛错并弹提示（detail 可能是字符串或 pydantic 错误数组）
+async function api(path, { method = "GET", body, silent = false } = {}) {
+  const headers = { "X-API-Key": $("apiKey").value.trim() };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const resp = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  if (resp.status === 204) return null;
+  let data = null;
+  try { data = await resp.json(); } catch (_) { data = null; }
+  if (!resp.ok) {
+    const detail = data && data.detail !== undefined ? (typeof data.detail === "string" ? data.detail : pretty(data.detail)) : resp.statusText;
+    if (!silent) toast(`${method} ${path} → ${resp.status}：${detail}`, "bad");
+    const err = new Error(detail); err.status = resp.status; throw err;
+  }
+  return data;
+}
+
+function badge(status) {
+  const map = { done: "ok", approved: "ok", SUCCESS: "ok", success: "ok", rendered: "ok", published: "ok",
+    awaiting_review: "warn", pending_review: "warn", needs_human_review: "warn", PENDING: "warn", STARTED: "run",
+    failed: "bad", rejected: "bad", FAILURE: "bad", denied: "bad", error: "bad",
+    queued: "run", scripting: "run", producing: "run", rendering: "run", scripted: "info", skipped: "" };
+  return `<span class="badge ${map[status] || ""}">${esc(status)}</span>`;
+}
+function table(headers, rows, emptyText = "暂无数据") {
+  if (!rows.length) return `<div class="empty">${emptyText}</div>`;
+  return `<div style="overflow:auto"><table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+}
+function openModal(title, html) { $("modalTitle").textContent = title; $("modalBody").innerHTML = html; $("modal").classList.add("open"); }
+$("modalClose").onclick = () => $("modal").classList.remove("open");
+$("modal").addEventListener("click", (e) => { if (e.target === $("modal")) $("modal").classList.remove("open"); });
+
+/* ============================ 导航 ============================ */
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("active", x === b));
+  document.querySelectorAll("section.page").forEach((p) => p.classList.toggle("active", p.id === "page-" + b.dataset.page));
+  if (b.dataset.page === "metrics") loadMetrics();
+  if (b.dataset.page === "tasks" && !Object.keys(state.schemas).length) loadSchemas();
+  if (b.dataset.page === "assistant") syncAssistantRunSelect();
+});
+
+/* ============================ 连接 ============================ */
+$("apiKey").value = localStorage.getItem("ai_short_drama_api_key") || "dev-key";
+async function connect() {
+  localStorage.setItem("ai_short_drama_api_key", $("apiKey").value.trim());
+  try {
+    const h = await fetch("/health").then((r) => r.json());
+    $("envLabel").textContent = `环境：${h.env}`;
+    await api("/projects?limit=1");  // 用一个受保护接口验证 key
+    $("connDot").className = "dot ok"; $("connText").textContent = "已连接";
+    await Promise.all([loadProjects(), loadRuns()]);
+  } catch (e) {
+    $("connDot").className = "dot bad"; $("connText").textContent = "连接失败";
+  }
+}
+$("btnConnect").onclick = connect;
+$("apiKey").addEventListener("keydown", (e) => { if (e.key === "Enter") connect(); });
+
+/* ============================ 项目 ============================ */
+async function loadProjects() {
+  state.projects = await api("/projects?limit=200");
+  const sel = $("pProject");
+  const prev = sel.value;
+  sel.innerHTML = state.projects.map((p) => `<option value="${esc(p.project_id)}">${esc(p.name)}（${short(p.project_id)}）</option>`).join("") || `<option value="">先创建项目</option>`;
+  if (prev && state.projects.some((p) => p.project_id === prev)) sel.value = prev;
+  $("projectList").innerHTML = table(["名称", "项目 id", "创建时间", ""], state.projects.map((p) => `
+    <tr class="clickable" data-id="${esc(p.project_id)}">
+      <td>${esc(p.name)}<div class="muted">${esc(p.description || "")}</div></td>
+      <td class="id">${esc(p.project_id)}</td><td class="muted">${fmtTime(p.created_at)}</td>
+      <td><button class="btn danger" data-del="${esc(p.project_id)}">删除</button></td></tr>`), "还没有项目，先在左侧创建");
+  $("projectList").querySelectorAll("tr.clickable").forEach((tr) => tr.onclick = (e) => { if (!e.target.dataset.del) showProject(tr.dataset.id); });
+  $("projectList").querySelectorAll("button[data-del]").forEach((b) => b.onclick = async () => {
+    if (!confirm("确定删除这个项目？")) return;
+    try { await api(`/projects/${b.dataset.del}`, { method: "DELETE" }); toast("已删除", "ok"); loadProjects(); } catch (_) {}
+  });
+}
+$("btnRefreshProjects").onclick = loadProjects;
+$("btnCreateProject").onclick = async () => {
+  const name = $("projName").value.trim();
+  if (!name) return toast("项目名称不能为空", "bad");
+  try {
+    const p = await api("/projects", { method: "POST", body: { name, description: $("projDesc").value.trim() || null } });
+    toast(`项目已创建：${p.name}`, "ok"); $("projName").value = ""; $("projDesc").value = "";
+    await loadProjects(); $("pProject").value = p.project_id;
+  } catch (_) {}
+};
+async function showProject(projectId) {
+  $("projSelLabel").textContent = projectId;
+  const [chars, eps] = await Promise.all([api("/characters?limit=200"), api("/episodes?limit=200")]);
+  const mine = (xs) => xs.filter((x) => x.project_id === projectId);
+  $("projCharacters").innerHTML = table(["姓名", "定位", "描述"], mine(chars).map((c) => `<tr><td>${esc(c.name)}</td><td>${badge(c.role || "-")}</td><td class="muted">${esc((c.description || "").slice(0, 80))}</td></tr>`), "该项目还没有角色（跑一次流水线就有了）");
+  $("projEpisodes").innerHTML = table(["集", "标题", "状态", "审核"], mine(eps).sort((a, b) => a.episode_number - b.episode_number).map((e) => `<tr class="clickable" data-ep="${esc(e.episode_id)}"><td>${e.episode_number}</td><td>${esc(e.title || "")}</td><td>${badge(e.status)}</td><td>${badge(e.review_status)}</td></tr>`), "该项目还没有剧集");
+  $("projEpisodes").querySelectorAll("tr.clickable").forEach((tr) => tr.onclick = () => showScript(tr.dataset.ep));
+}
+
+/* ============================ 流水线 ============================ */
+async function loadRuns() {
+  const status = $("runStatusFilter").value;
+  state.runs = await api(`/pipelines?limit=100${status ? "&status=" + encodeURIComponent(status) : ""}`);
+  const projName = (id) => (state.projects.find((p) => p.project_id === id) || {}).name || short(id);
+  $("runList").innerHTML = table(["运行", "项目 / 创意", "状态", "阶段", "更新时间"], state.runs.map((r) => `
+    <tr class="clickable ${state.currentRun && state.currentRun.run_id === r.run_id ? "selected" : ""}" data-id="${esc(r.run_id)}">
+      <td class="id">${short(r.run_id)}</td>
+      <td>${esc(projName(r.project_id))}<div class="muted">${esc((r.params.idea || "").slice(0, 40))}</div></td>
+      <td>${badge(r.status)}</td><td class="muted">${esc(r.stage || "")}</td><td class="muted">${fmtTime(r.updated_at)}</td></tr>`), "还没有运行记录");
+  $("runList").querySelectorAll("tr.clickable").forEach((tr) => tr.onclick = () => selectRun(tr.dataset.id));
+  syncAssistantRunSelect();
+}
+$("btnRefreshRuns").onclick = loadRuns;
+$("runStatusFilter").onchange = loadRuns;
+
+$("btnCreateRun").onclick = async () => {
+  const project_id = $("pProject").value;
+  if (!project_id) return toast("请先创建并选择项目", "bad");
+  const body = {
+    project_id, idea: $("pIdea").value.trim(),
+    num_characters: +$("pChars").value, num_scenes: +$("pScenes").value,
+    episode_numbers: $("pEpisodes").value.split(",").map((s) => +s.trim()).filter((n) => n > 0),
+    target_duration_seconds: +$("pDuration").value, prompt_mode: $("pPromptMode").value, planner: $("pPlanner").value,
+    editorial: $("pEditorial").value === "true", max_revision_rounds: +$("pRounds").value,
+  };
+  $("btnCreateRun").disabled = true; $("btnCreateRun").textContent = "运行中…（故事阶段可能要几十秒）";
+  try {
+    const run = await api("/pipelines/episodes", { method: "POST", body });
+    toast(`流水线已启动：${short(run.run_id)}（${run.status}）`, run.status === "failed" ? "bad" : "ok");
+    await loadRuns(); await selectRun(run.run_id);
+  } catch (_) {} finally { $("btnCreateRun").disabled = false; $("btnCreateRun").textContent = "启动流水线"; }
+};
+
+const RUNNING = new Set(["queued", "scripting", "producing", "rendering"]);
+async function selectRun(runId) {
+  try { state.currentRun = await api(`/pipelines/${runId}`); } catch (_) { return; }
+  $("btnRefreshRun").disabled = false;
+  renderRun(); syncAssistantRunSelect();
+  $("runList").querySelectorAll("tr.clickable").forEach((tr) => tr.classList.toggle("selected", tr.dataset.id === runId));
+  // 运行中的 run 每 3 秒轮询一次，直到进入终态
+  clearInterval(state.pollTimer);
+  if (RUNNING.has(state.currentRun.status)) {
+    $("runPolling").textContent = "自动刷新中…";
+    state.pollTimer = setInterval(async () => {
+      try { state.currentRun = await api(`/pipelines/${runId}`, { silent: true }); } catch (_) { return; }
+      renderRun();
+      if (!RUNNING.has(state.currentRun.status)) { clearInterval(state.pollTimer); $("runPolling").textContent = ""; loadRuns(); }
+    }, 3000);
+  } else { $("runPolling").textContent = ""; }
+}
+$("btnRefreshRun").onclick = () => state.currentRun && selectRun(state.currentRun.run_id);
+
+function renderRun() {
+  const r = state.currentRun; if (!r) return;
+  const res = r.result || {};
+  const editorial = res.editorial || {};
+  const canApprove = ["awaiting_review", "scripted", "rejected"].includes(r.status);
+  const eps = (r.episodes || []).map((e) => `
+    <tr>
+      <td><input type="checkbox" class="epCheck" value="${esc(e.episode_id)}" ${e.review_status === "approved" ? "" : "checked"} style="width:auto"></td>
+      <td>${e.episode_number}</td><td>${esc(e.title || "")}<div class="id">${esc(e.business_id)}</div></td>
+      <td>${badge(e.status)}</td><td>${badge(e.review_status)}</td>
+      <td>${editorial[e.episode_id] ? badge(editorial[e.episode_id].status) + ` <span class="muted">${editorial[e.episode_id].rounds} 轮</span>` : "-"}</td>
+      <td>${e.video_path ? `<span class="mono" title="${esc(e.video_path)}">已渲染</span>` : "-"}</td>
+      <td><button class="btn" data-script="${esc(e.episode_id)}">剧本 / 编审</button></td></tr>`);
+  const renders = (res.renders || []).map((x) => `<tr><td class="id">${esc(x.episode_id)}</td><td>${(x.rendered_shots || []).length} 个镜头</td><td>${x.duration_sec ?? "-"} s</td><td class="mono">${esc(x.video_path || "")}</td></tr>`);
+  const publish = (res.publish || []).map((x) => `<tr><td>${esc(x.platform || "")}</td><td>${badge(x.status || "")}</td><td>${x.dry_run ? "dry-run" : "真实发布"}</td><td class="id">${esc(x.episode_id || "")}</td></tr>`);
+  $("runDetail").innerHTML = `
+    <div class="kv">
+      <b>run_id</b><span class="id">${esc(r.run_id)}</span>
+      <b>状态 / 阶段</b><span>${badge(r.status)} <span class="muted">${esc(r.stage || "")}</span></span>
+      <b>创意</b><span>${esc(r.params.idea || "")}</span>
+      <b>参数</b><span class="muted">角色 ${r.params.num_characters ?? "-"} · 场次 ${r.params.num_scenes ?? "-"} · 集 ${(r.params.episode_numbers || []).join(",") || "-"} · 提示词 ${r.params.prompt_mode || "-"} · 规划 ${r.params.planner || "-"}</span>
+      ${r.error ? `<b>错误</b><span style="color:var(--bad)">${esc(r.error)}</span>` : ""}
+      ${res.shots_total !== undefined ? `<b>镜头</b><span>共 ${res.shots_total}${res.approved_shots ? `，QC 通过 ${res.approved_shots.length}` : ""}${res.failed_shots && res.failed_shots.length ? `，<span style="color:var(--bad)">失败 ${res.failed_shots.length}</span>` : ""}</span>` : ""}
+    </div>
+    <h3 style="font-size:14px;margin:14px 0 6px">剧集</h3>
+    ${table(["选", "集", "标题", "状态", "审核", "AI 编审", "成片", ""], eps, "故事阶段还没产出剧集")}
+    <div class="row" style="margin-top:10px">
+      <div><label>审核意见（批准 / 打回时附带）</label><input id="reviewNotes" placeholder="可选"></div>
+      <button class="btn ok" id="btnApprove" ${canApprove ? "" : "disabled"}>批准勾选的集 → 进入生产</button>
+      <button class="btn danger" id="btnReject" ${["awaiting_review", "scripted"].includes(r.status) ? "" : "disabled"}>打回</button>
+      <button class="btn" id="btnRerender" ${["done", "failed", "rendering"].includes(r.status) ? "" : "disabled"}>重新渲染</button>
+      <button class="btn" id="btnUsage">LLM 用量</button>
+      <button class="btn" id="btnGoAssistant">问制片助理</button>
+    </div>
+    <div id="usageBox"></div>
+    ${renders.length ? `<h3 style="font-size:14px;margin:14px 0 6px">成片</h3>${table(["集", "镜头", "时长", "路径"], renders)}` : ""}
+    ${publish.length ? `<h3 style="font-size:14px;margin:14px 0 6px">发布</h3>${table(["平台", "状态", "模式", "集"], publish)}` : ""}
+    <details><summary>原始 result JSON</summary><pre>${esc(pretty(res))}</pre></details>`;
+  $("runDetail").querySelectorAll("button[data-script]").forEach((b) => b.onclick = () => showScript(b.dataset.script));
+  $("btnApprove").onclick = async () => {
+    const ids = [...document.querySelectorAll(".epCheck:checked")].map((c) => c.value);
+    if (!ids.length) return toast("至少勾选一集", "bad");
+    if (!confirm(`批准 ${ids.length} 集并进入生产（镜头生成 → 渲染 → 发布）？`)) return;
+    try { await api(`/pipelines/${r.run_id}/approve`, { method: "POST", body: { episode_ids: ids, notes: $("reviewNotes").value || null } }); toast("已批准，生产已入队", "ok"); selectRun(r.run_id); loadRuns(); } catch (_) {}
+  };
+  $("btnReject").onclick = async () => {
+    const notes = $("reviewNotes").value.trim() || prompt("打回原因（必填）");
+    if (!notes) return;
+    try { await api(`/pipelines/${r.run_id}/reject`, { method: "POST", body: { notes } }); toast("已打回", "ok"); selectRun(r.run_id); loadRuns(); } catch (_) {}
+  };
+  $("btnRerender").onclick = async () => { try { await api(`/pipelines/${r.run_id}/rerender`, { method: "POST" }); toast("已重新入队渲染", "ok"); selectRun(r.run_id); } catch (_) {} };
+  $("btnUsage").onclick = async () => {
+    const u = await api(`/pipelines/${r.run_id}/usage`);
+    const rows = Object.entries(u.by_agent).map(([a, v]) => `<tr><td>${esc(a)}</td><td>${v.calls}</td><td>${v.input_tokens}</td><td>${v.output_tokens}</td><td>$${v.cost_usd.toFixed(4)}</td></tr>`);
+    $("usageBox").innerHTML = `<p style="margin:10px 0 4px">LLM 调用 <b>${u.calls}</b> 次 · 输入 <b>${u.input_tokens}</b> · 输出 <b>${u.output_tokens}</b> token · 估算成本 <b>$${u.cost_usd.toFixed(4)}</b></p>${table(["Agent", "调用", "输入", "输出", "成本"], rows)}`;
+  };
+  $("btnGoAssistant").onclick = () => { document.querySelector('nav button[data-page="assistant"]').click(); };
+}
+
+async function showScript(episodeId) {
+  let s;
+  try { s = await api(`/episodes/${episodeId}/script`); } catch (_) { return; }
+  const ep = s.episode || {}; const ed = s.editorial || {}; const qc = ed.qc || {}; const dec = ed.editorial || {};
+  const issues = (qc.issues || []).map((i) => `<tr><td>${badge(i.severity)}</td><td class="mono">${esc(i.code)}</td><td class="id">${esc(i.location || "")}</td><td>${esc(i.description)}<div class="muted">${esc(i.suggestion || "")}</div></td></tr>`);
+  openModal(`第 ${ep.episode_number ?? "?"} 集《${ep.title || ""}》`, `
+    <div class="kv">
+      <b>审核状态</b><span>${badge(s.review_status)} <span class="muted">${esc(s.review_notes || "")}</span></span>
+      <b>开场钩子</b><span>${esc(ep.hook || "")}</span>
+      <b>结尾悬念</b><span>${esc(ep.cliffhanger || "")}</span>
+      <b>梗概</b><span>${esc(ep.synopsis || "")}</span>
+      <b>情绪曲线</b><span class="muted">${esc(ep.emotional_arc || "")}</span>
+    </div>
+    ${ed.status ? `<h3 style="font-size:14px;margin:14px 0 6px">AI 编审：${badge(ed.status)} <span class="muted">修订 ${ed.revision_rounds ?? 0} 轮</span></h3>
+      <div class="kv">
+        <b>质检官</b><span>${qc.passed === undefined ? "-" : (qc.passed ? badge("approved") : badge("failed"))} 评分 ${qc.score ?? "-"}：${esc(qc.summary || "")}</span>
+        <b>总编审</b><span>${badge(dec.decision || "-")} 商业分 ${dec.commercial_score ?? "-"}：${esc(dec.notes || "")}${dec.required_changes && dec.required_changes.length ? `<div class="muted">要求修改：${esc(dec.required_changes.join("；"))}</div>` : ""}</span>
+      </div>
+      ${issues.length ? table(["级别", "code", "位置", "问题 / 建议"], issues) : ""}` : ""}
+    <h3 style="font-size:14px;margin:14px 0 6px">剧本 ${s.script ? `<span class="muted">version ${s.script.version}</span>` : ""}</h3>
+    <pre class="light">${esc(s.script ? s.script.content : "（还没有剧本）")}</pre>`);
+}
+
+/* ============================ 制片助理 ============================ */
+function syncAssistantRunSelect() {
+  const sel = $("aRun");
+  const withEpisodes = state.runs.filter((r) => (r.result || {}).episode_ids && r.result.episode_ids.length);
+  sel.innerHTML = withEpisodes.map((r) => `<option value="${esc(r.run_id)}">${short(r.run_id)} · ${esc((r.params.idea || "").slice(0, 24))} · ${esc(r.status)}</option>`).join("") || `<option value="">没有已产出剧集的运行</option>`;
+  if (state.currentRun && withEpisodes.some((r) => r.run_id === state.currentRun.run_id)) sel.value = state.currentRun.run_id;
+  $("aRunLabel").textContent = sel.value || "未选择";
+}
+$("aRun").onchange = () => { $("aRunLabel").textContent = $("aRun").value || "未选择"; };
+document.querySelectorAll("#page-assistant button[data-q]").forEach((b) => b.onclick = () => { $("aQuestion").value = b.dataset.q; ask(); });
+$("btnAsk").onclick = ask;
+$("aQuestion").addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
+$("btnClearChat").onclick = () => { $("chat").innerHTML = `<div class="empty">还没有提问</div>`; };
+
+function appendMsg(cls, html) {
+  const chat = $("chat");
+  if (chat.querySelector(".empty")) chat.innerHTML = "";
+  const el = document.createElement("div"); el.className = "msg " + cls; el.innerHTML = html;
+  chat.appendChild(el); chat.scrollTop = chat.scrollHeight; return el;
+}
+async function ask() {
+  const runId = $("aRun").value; const question = $("aQuestion").value.trim();
+  if (!runId) return toast("先选择一条已产出剧集的运行", "bad");
+  if (question.length < 2) return toast("问题太短", "bad");
+  appendMsg("user", esc(question));
+  const pending = appendMsg("bot", `<span class="muted">Agent 规划中…（会自己决定调哪些工具）</span>`);
+  $("btnAsk").disabled = true;
+  try {
+    const resp = await api(`/pipelines/${runId}/assistant`, { method: "POST", body: { question, context_id: $("aContext").value.trim() || null } });
+    let result = resp.result;
+    // 非 eager（生产 worker）模式：拿 task_id 轮询，直到 SUCCESS / FAILURE
+    if (!result && !resp.error) {
+      for (let i = 0; i < 120 && !result; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const t = await api(`/tasks/${resp.task_id}`, { silent: true });
+        if (t.status === "SUCCESS") result = t.result;
+        else if (t.status === "FAILURE") { resp.error = t.error; break; }
+        else pending.innerHTML = `<span class="muted">任务 ${short(resp.task_id)} 状态 ${t.status}…</span>`;
+      }
+    }
+    if (!result) { pending.innerHTML = `<span style="color:var(--bad)">失败：${esc(resp.error || "超时")}</span>`; return; }
+    const steps = (result.steps || []).map((s) => `<div class="step">${badge(s.status)} <b class="mono">${esc(s.tool)}</b><span class="mono muted">${esc(JSON.stringify(s.args))}</span><span class="muted">${(s.duration_seconds * 1000).toFixed(1)} ms</span>${s.error ? `<span style="color:var(--bad)">${esc(s.error)}</span>` : ""}</div>`).join("");
+    const u = result.usage || {};
+    pending.innerHTML = `<div>${esc(result.answer)}</div>
+      <div class="steps">${steps || `<span class="muted">没有调用工具</span>`}
+        <div class="muted" style="margin-top:6px">工具 ${result.tool_rounds} 轮 · 停止原因 ${esc(result.stopped_reason)} · LLM ${u.llm_calls} 次 · token ${(u.input_tokens || 0) + (u.output_tokens || 0)} · $${(u.cost_usd || 0).toFixed(4)}${result.flagged && result.flagged.length ? ` · <span style="color:var(--warn)">已标记人工复核：${result.flagged.map((f) => f.episode_id).join(",")}</span>` : ""}</div>
+      </div>`;
+    if (result.flagged && result.flagged.length && state.currentRun && state.currentRun.run_id === runId) selectRun(runId);
+  } catch (e) { pending.innerHTML = `<span style="color:var(--bad)">请求失败：${esc(e.message)}</span>`; }
+  finally { $("btnAsk").disabled = false; }
+}
+
+/* ============================ 监控指标 ============================ */
+async function loadMetrics() {
+  let m;
+  try { m = await fetch("/metrics/summary").then((r) => r.json()); } catch (e) { return toast("读取指标失败", "bad"); }
+  const pct = (v) => v === null || v === undefined ? "–" : (v * 100).toFixed(1) + "%";
+  $("mTokens").textContent = Math.round(m.token_usage.total_tokens).toLocaleString();
+  $("mToolRate").textContent = pct(m.tool_calls.success_rate);
+  const tasks = Object.entries(m.execution_time.by_task);
+  const totalCount = tasks.reduce((a, [, v]) => a + v.count, 0), totalSec = tasks.reduce((a, [, v]) => a + v.total_seconds, 0);
+  $("mTaskTime").textContent = totalCount ? (totalSec / totalCount).toFixed(2) + " s" : "–";
+  $("mErrRate").textContent = pct(m.error_rate.error_rate);
+  $("mErrRate").style.color = (m.error_rate.error_rate || 0) > 0.1 ? "var(--bad)" : "";
+  $("mByModel").innerHTML = table(["provider/model", "输入", "输出", "成本"], Object.entries(m.token_usage.by_model).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td>${Math.round(v.input)}</td><td>${Math.round(v.output)}</td><td>$${v.cost_usd.toFixed(4)}</td></tr>`), "还没有 LLM 调用");
+  $("mByTool").innerHTML = table(["工具", "成功", "失败 / 拒绝 / 参数错", "成功率"], Object.entries(m.tool_calls.by_tool).map(([k, v]) => {
+    const total = Object.values(v).reduce((a, b) => a + b, 0), ok = v.success || 0;
+    return `<tr><td class="mono">${esc(k)}</td><td>${ok}</td><td>${Object.entries(v).filter(([s]) => s !== "success").map(([s, n]) => `${s} ${n}`).join("，") || "-"}</td><td>${pct(total ? ok / total : null)}</td></tr>`;
+  }), "还没有工具调用（去「制片助理」页提个问）");
+  $("mByTask").innerHTML = table(["任务", "次数", "总耗时", "平均"], tasks.map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td>${v.count}</td><td>${v.total_seconds} s</td><td>${v.avg_seconds ?? "-"} s</td></tr>`), "还没有任务执行");
+  const st = Object.entries(m.error_rate.by_task).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td>${v.success || 0}</td><td>${v.retry || 0}</td><td style="color:${v.failure ? "var(--bad)" : ""}">${v.failure || 0}</td></tr>`);
+  const stops = Object.entries(m.error_rate.agent_runs_by_stop_reason).map(([k, v]) => `${k} ${v}`).join("，") || "-";
+  $("mErrors").innerHTML = `${table(["任务", "成功", "重试", "失败"], st, "还没有任务执行")}<p class="muted" style="margin:10px 0 0">LLM 降级次数：<b>${m.error_rate.llm_fallbacks}</b> · Agent 停止原因：${esc(stops)}（limit_reached / repeat_detected 多说明 Agent 在打转）</p>`;
+}
+$("btnRefreshMetrics").onclick = loadMetrics;
+$("mAuto").onchange = () => { clearInterval(state.metricsTimer); if ($("mAuto").checked) state.metricsTimer = setInterval(loadMetrics, 5000); };
+
+/* ============================ 单步任务 ============================ */
+async function loadSchemas() {
+  try { state.schemas = await api("/tasks/schemas"); } catch (_) { return; }
+  $("tQueue").innerHTML = Object.keys(state.schemas).map((q) => `<option>${q}</option>`).join("");
+  showSchema();
+}
+function showSchema() { $("tSchema").textContent = pretty(state.schemas[$("tQueue").value] || {}); }
+$("tQueue").onchange = showSchema;
+$("btnTaskExample").onclick = () => {
+  const q = $("tQueue").value;
+  const examples = {
+    llm: { prompt: "用一句话概括一部重生复仇短剧的卖点", context_id: "demo-chat" },
+    assistant: { run_id: state.currentRun ? state.currentRun.run_id : "<run_id>", question: "列出全部角色" },
+    image: { prompt: "电影感竖屏短剧关键帧，豪门宴会厅，紧张对峙", width: 256, height: 448 },
+    shot: { shot_id: "<shot 数据库 id>", prompt: "…", run_id: state.currentRun ? state.currentRun.run_id : null },
+    video: { prompt: "缓慢推镜，情绪张力拉满", duration_sec: 4 },
+    tts: { text: "这一次，我不会再心软。", voice_id: "default", provider: "bark" },
+    lipsync: { video_path: "/app/artifacts/x.mp4", audio_path: "/app/artifacts/x.wav" },
+    qc: { generated_image: "/app/artifacts/x.png", character_id: "char_su_wanwan" },
+    analytics: { sources: [], since_days: 7 },
+  };
+  $("tPayload").value = pretty(examples[q] || {});
+};
+$("btnEnqueue").onclick = async () => {
+  let payload;
+  try { payload = JSON.parse($("tPayload").value); } catch (e) { return toast("payload 不是合法 JSON：" + e.message, "bad"); }
+  try {
+    const t = await api("/tasks", { method: "POST", body: { queue: $("tQueue").value, payload } });
+    $("tTaskId").value = t.task_id; toast(`已入队：${short(t.task_id)}（${t.status}）`, "ok"); $("btnTaskStatus").click();
+  } catch (_) {}
+};
+$("btnTaskStatus").onclick = async () => {
+  const id = $("tTaskId").value.trim(); if (!id) return;
+  try { const t = await api(`/tasks/${id}`); $("tResult").textContent = pretty(t); } catch (_) {}
+};
+
+connect();
+</script>
+</body>
+</html>

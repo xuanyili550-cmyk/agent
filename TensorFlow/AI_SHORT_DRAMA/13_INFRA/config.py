@@ -33,6 +33,8 @@ def _apply_file_secrets() -> None:
 
 
 class Settings(BaseSettings):
+    """全部运行配置。字段名即环境变量名（大写），默认值就是本地开发能跑的值。"""
+
     model_config = SettingsConfigDict(env_file=os.environ.get("ENV_FILE", ".env"), env_file_encoding="utf-8", extra="ignore")
 
     # ---- 运行环境 ----
@@ -64,10 +66,18 @@ class Settings(BaseSettings):
     llm_model: str | None = None  # None 取各 provider 默认
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
+    # 多模型降级（坑 4）：主模型限流/超时/没配 key 时按顺序切到这些备用模型；模型名前缀决定后端
+    llm_fallback_models: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    llm_fallback_cooldown_seconds: float = 60.0  # 某个模型失败后多久内直接跳过它（熔断冷却）
+    # 会话记忆存储：Redis（多 worker）> SQLite（单机可查询）> 本地 JSON 文件；按这个优先级取第一个配置了的
     llm_context_redis_url: str | None = None
+    llm_context_sqlite_path: str | None = None
     llm_context_dir: str | None = None
     llm_context_ttl_seconds: int | None = None
     llm_context_lock_timeout_seconds: int = 300
+    # ToolAgent（工具循环）：坑 1 的轮次上限；坑 3 的工具级确认门——白名单里的工具才允许自动执行
+    agent_max_tool_rounds: int = 5
+    agent_tool_allowlist: Annotated[list[str], NoDecode] = Field(default_factory=list)
     # 每 1k token 的价格（美元），用来估算成本；模型名前缀匹配，查不到按 0 计
     llm_price_per_1k_input: dict[str, float] = Field(
         default={"claude-sonnet": 0.003, "claude-opus": 0.015, "claude-haiku": 0.0008, "gpt-4o-mini": 0.00015, "gpt-4o": 0.0025}
@@ -100,9 +110,10 @@ class Settings(BaseSettings):
     publish_dry_run: bool = True  # 生产显式关掉才会真的往平台推
     publish_platforms: Annotated[list[str], NoDecode] = Field(default=["youtube", "tiktok"])
 
-    @field_validator("api_keys", "cors_origins", "publish_platforms", mode="before")
+    @field_validator("api_keys", "cors_origins", "publish_platforms", "llm_fallback_models", "agent_tool_allowlist", mode="before")
     @classmethod
     def _split_csv(cls, value):
+        """环境变量里的逗号分隔字符串 -> 列表（去空白、去空项）。"""
         if isinstance(value, str):
             return [v.strip() for v in value.split(",") if v.strip()]
         return value
@@ -111,6 +122,7 @@ class Settings(BaseSettings):
     @classmethod
     def _parse_ladder(cls, value):
         # 允许 "1080x1920,720x1280,540x960" 这种环境变量写法
+        """把 "1080x1920,720x1280" 这种环境变量写法解析成 (宽, 高) 列表。"""
         if isinstance(value, str):
             pairs = []
             for item in value.split(","):
@@ -121,15 +133,18 @@ class Settings(BaseSettings):
 
     @property
     def result_backend(self) -> str:
+        """Celery 结果后端；没单独配就和 broker 一样。"""
         return self.celery_result_backend or self.celery_broker_url
 
     @property
     def is_prod(self) -> bool:
+        """是否生产环境（决定 eager 队列禁用、create_all 禁用等）。"""
         return self.app_env == "prod"
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    """进程内单例：第一次调用时读文件密钥、构造 Settings 并做生产环境校验。"""
     _apply_file_secrets()
     settings = Settings()
     if settings.is_prod and settings.celery_task_always_eager:

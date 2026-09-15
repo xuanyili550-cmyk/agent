@@ -1,3 +1,10 @@
+"""语音合成任务：一句对白 -> 一段配音音频（07_GENERATION.audio 的队列封装）。
+
+在生产链里和 video_task 并行：镜头画面和对白语音各自生成，之后由 lipsync_task 对口型、09_POST 混音。
+支持三种 provider：ElevenLabs（云端，需 API key）、Bark（本地免费）、XTTS（本地，需单独 venv）；
+本任务只做 provider 选择和参数透传，素材登记由 07 的 TTSGenerator 写 jsonl 账本。
+"""
+
 from __future__ import annotations
 
 import importlib
@@ -10,19 +17,19 @@ __all__ = ["tts_task"]
 
 @celery_app.task(name="tts_task", bind=True)
 def tts_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Text-to-speech GPU queue task (dialogue line -> voice audio).
+    """文本转语音 GPU 队列任务（对白台词 -> 语音音频）。
 
-    Expected payload: {"text": str, "voice_id": str, "provider": "elevenlabs"|"bark"|"xtts", "character_id": str | None,
+    payload: {"text": str, "voice_id": str, "provider": "elevenlabs"|"bark"|"xtts", "character_id": str | None,
       "episode_id": str | None, "shot_id": str | None, "seed": int | None,
-      "output_dir": str | None, "asset_log_path": str | None, "license": str | None}.
-    Expected return: {"file_path": str, "model": str}.
+      "output_dir": str | None, "asset_log_path": str | None, "license": str | None}。
+    返回: {"file_path": str, "model": str}。
 
-    Calls the real 07_GENERATION.audio.tts_generator classes: TTSGenerator wraps a
-    BaseTTSProvider (ElevenLabsTTSProvider), which raises NotConfiguredError at
-    construction time if ELEVENLABS_API_KEY is unset. voice_id must be a provider-side
-    voice id (see 07_GENERATION.voice.voice_cloner.VoiceCloner for enrollment, a
-    separate one-time step from per-line synthesis).
+    直接调用 07_GENERATION.audio.tts_generator 里的真实类：TTSGenerator 包装一个
+    BaseTTSProvider（ElevenLabsTTSProvider），后者在 ELEVENLABS_API_KEY 未设置时构造即抛
+    NotConfiguredError。voice_id 必须是 provider 侧的音色 id（音色注册见
+    07_GENERATION.voice.voice_cloner.VoiceCloner，那是一次性的前置步骤，和逐句合成分开）。
     """
+    # 数字开头的顶层包只能用 importlib 按名字 import
     tts_generator_mod = importlib.import_module("07_GENERATION.audio.tts_generator")
 
     # payload["provider"]: "elevenlabs"（默认，需 ELEVENLABS_API_KEY）| "bark"（本地免费）| "xtts"（本地，需 .venv_xtts）
@@ -48,4 +55,5 @@ def tts_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         license=payload.get("license"),
     )
 
+    # model 返回 provider 类名：结果里能看出这条素材是哪家服务出的
     return {"file_path": file_path, "model": type(provider).__name__}

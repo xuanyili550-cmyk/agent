@@ -25,6 +25,8 @@ from .memory import ConversationMemory
 
 
 class ChapterPlannerAgent(BaseAgent):
+    """把 Story Bible 规划成季线（幕结构 + 每幕包含哪些集）的 LLM Agent。"""
+
     SYSTEM_PROMPT_FILE = PROMPTS_DIR / "chapter_planner_agent_system.txt"
 
     def __init__(
@@ -35,12 +37,14 @@ class ChapterPlannerAgent(BaseAgent):
         num_episodes: int = 12,
         num_acts: int = 3,
     ):
+        """记下集数/幕数配置，并同时准备好规则版 ``SeasonArcPlanner`` 作为兜底。"""
         super().__init__(provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries, memory=memory)
         self.num_episodes = num_episodes
         self.num_acts = num_acts
         self._fallback = SeasonArcPlanner(num_episodes=num_episodes, num_acts=num_acts)
 
     def plan(self, story_bible: sch.StoryBible, season_number: int = 1) -> sch.SeasonArc:
+        """让 LLM 按 Story Bible 规划一季，再交给 ``_reconcile`` 做集 id 完整性校验。"""
         episode_ids = [f"ep_{i:03d}" for i in range(1, self.num_episodes + 1)]
         user_prompt = (
             f"Story Bible：\n标题：{story_bible.title}\nlogline：{story_bible.logline}\n"
@@ -55,6 +59,7 @@ class ChapterPlannerAgent(BaseAgent):
         return self._reconcile(arc, story_bible, season_number, episode_ids)
 
     def _reconcile(self, arc: sch.SeasonArc, bible: sch.StoryBible, season_number: int, episode_ids: list[str]) -> sch.SeasonArc:
+        """校验 LLM 分配的集 id 是否与预期列表完全一致，不一致就换规则版兜底。"""
         assigned = [eid for beat in arc.beats for eid in beat.episode_ids]
         if assigned == episode_ids and arc.episode_ids == episode_ids and len(arc.beats) == self.num_acts:
             return arc

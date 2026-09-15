@@ -1,3 +1,13 @@
+"""QC 报告聚合：把四个检查器（角色一致性 / 场景对齐 / 视频 / 音频）的结果汇总成一份 QCReport，
+并给出 APPROVED / RETRY 决定。
+
+流水线位置：08_QC 的出口——"Generate -> QC -> PASS? -> Retry/Approved" 里的 PASS? 判断就在这里。
+13_INFRA/queue/shot_task.py 读 ``decision`` 决定是把素材推进到 09_POST 还是喂给三级重试阶梯，
+``retry_reasons`` 则作为改写提示词时的上下文。
+为什么拆成 build_qc_report（纯聚合）和 run_full_qc（端到端）：前者不依赖任何重库，
+可以用手工构造的结果对象单测阈值逻辑；后者才真正 import torch / opencv / pydub 跑检查。
+"""
+
 from __future__ import annotations
 
 import json
@@ -21,11 +31,15 @@ PathLike = Union[str, Path]
 
 
 class QCDecision(str, Enum):
+    """QC 最终决定：通过进入后期，或退回重试。只有两个值，没有"人工复核"——那由编审 Agent 另行处理。"""
+
     APPROVED = "approved"
     RETRY = "retry"
 
 
 class QCItemScore(BaseModel):
+    """单项检查的打分：分数 / 阈值可为 None（视频、音频是多条件布尔判断，没有单一阈值），``detail`` 只在失败时填写。"""
+
     name: str
     score: Optional[float] = None
     threshold: Optional[float] = None
@@ -34,6 +48,15 @@ class QCItemScore(BaseModel):
 
 
 class QCThresholds(BaseModel):
+    """可配置的通过阈值。
+
+    - ``character_min_similarity=0.75``：图像-图像余弦映射到 [0,1] 后，同一角色不同镜头通常在 0.8 以上，
+      无关人物约 0.6-0.7，0.75 是经验分界；
+    - ``scene_min_similarity=0.50``：对应 SceneQC 缩放前原始 CLIP 分 0.2，是"文本与画面基本相关"的常见下界；
+    - ``audio_required`` / ``video_required``：缺少对应结果时是否直接判 RETRY——默认必须有，
+      避免因为检查器没跑就"默认通过"。
+    """
+
     character_min_similarity: float = 0.75
     scene_min_similarity: float = 0.50
     audio_required: bool = True
@@ -41,6 +64,8 @@ class QCThresholds(BaseModel):
 
 
 class QCReport(BaseModel):
+    """一份完整的 QC 报告：素材 / 镜头 / 剧集 ID、四项检查（缺省为 None）、决定和重试原因。"""
+
     asset_id: Optional[str] = None
     shot_id: Optional[str] = None
     episode_id: Optional[str] = None
@@ -54,9 +79,11 @@ class QCReport(BaseModel):
 
     @property
     def passed(self) -> bool:
+        """decision 是否为 APPROVED。"""
         return self.decision == QCDecision.APPROVED
 
     def to_json(self, path: Optional[PathLike] = None) -> str:
+        """序列化为缩进 JSON 字符串；给了 path 就同时写文件。``ensure_ascii=False`` 保证中文原因可读。"""
         payload = self.model_dump(mode="json")
         text = json.dumps(payload, indent=2, ensure_ascii=False)
         if path is not None:
@@ -65,6 +92,7 @@ class QCReport(BaseModel):
 
 
 def _character_item(result, threshold: float) -> QCItemScore:
+    """把 CharacterConsistencyResult 按阈值转成 QCItemScore。"""
     passed = result.similarity >= threshold
     return QCItemScore(
         name="character_consistency",
@@ -76,6 +104,7 @@ def _character_item(result, threshold: float) -> QCItemScore:
 
 
 def _scene_item(result, threshold: float) -> QCItemScore:
+    """把 SceneAlignmentResult 按阈值转成 QCItemScore。"""
     passed = result.similarity >= threshold
     return QCItemScore(
         name="scene_alignment",
@@ -87,6 +116,10 @@ def _scene_item(result, threshold: float) -> QCItemScore:
 
 
 def _video_item(result) -> QCItemScore:
+    """把 VideoQCResult 转成 QCItemScore：通过与否沿用 result.passed，detail 列出所有未通过的子项。
+
+    ``score`` 只是给报表看的综合分：1 - max(黑帧比例, 静帧比例 * 0.5)——静帧比黑帧"轻"，所以打五折。
+    """
     passed = result.passed
     reasons = []
     if not result.duration_ok:
@@ -107,6 +140,7 @@ def _video_item(result) -> QCItemScore:
 
 
 def _audio_item(result) -> QCItemScore:
+    """把 AudioQCResult 转成 QCItemScore；``score`` 直接放响度 dBFS 方便报表排查。"""
     passed = result.passed
     reasons = []
     if not result.loudness_ok:
@@ -133,11 +167,10 @@ def build_qc_report(
     audio_result=None,
     thresholds: Optional[QCThresholds] = None,
 ) -> QCReport:
-    """Pure aggregation step: Generate -> QC -> PASS? -> Retry/Approved.
+    """纯聚合步骤：Generate -> QC -> PASS? -> Retry/Approved。
 
-    Takes already-computed results from the four QC checkers (any subset may be
-    ``None`` if that dimension isn't applicable to this asset) and produces a single
-    QCReport with a pass/fail decision and, on failure, a list of retry reasons.
+    接收四个 QC 检查器已经算好的结果（不适用于该素材的维度可以传 ``None``），
+    产出一份带通过 / 失败决定的 QCReport；失败时附带重试原因列表。
     """
     thresholds = thresholds or QCThresholds()
     items: Dict[str, QCItemScore] = {}
@@ -161,6 +194,7 @@ def build_qc_report(
         if not item.passed:
             retry_reasons.append(item.detail or "video_quality failed")
     elif thresholds.video_required:
+        # 视频结果缺失且被要求：不能"没查就算过"，记一条原因让它 RETRY
         retry_reasons.append("video QC result missing but required")
 
     if audio_result is not None:
@@ -171,6 +205,7 @@ def build_qc_report(
     elif thresholds.audio_required:
         retry_reasons.append("audio QC result missing but required")
 
+    # 任何一条原因都足以退回：QC 是"一票否决"制
     decision = QCDecision.APPROVED if not retry_reasons else QCDecision.RETRY
 
     return QCReport(
@@ -200,11 +235,10 @@ def run_full_qc(
     audio_path: Optional[PathLike] = None,
     thresholds: Optional[QCThresholds] = None,
 ) -> QCReport:
-    """End-to-end orchestration: runs whichever of the four checkers have inputs
-    provided, then aggregates into a QCReport via build_qc_report.
+    """端到端编排：只运行那些给了输入的检查器，然后通过 build_qc_report 聚合成 QCReport。
 
-    Heavy dependencies (transformers/torch for CLIP, opencv, pydub) are imported
-    lazily here so importing this module alone stays lightweight.
+    重依赖（CLIP 用的 transformers/torch、opencv、pydub）在这里按需延迟 import，
+    这样单独 import 本模块仍然很轻量。
     """
     character_result = None
     scene_result = None

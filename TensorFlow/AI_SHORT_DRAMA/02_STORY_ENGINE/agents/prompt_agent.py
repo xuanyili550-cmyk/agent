@@ -1,3 +1,12 @@
+"""提示词生成 Agent：把结构化的分镜（Shot）翻译成图像/视频生成模型能用的自然语言 prompt。
+
+在流水线里处于"结构化剧本数据 -> 生成式素材"的桥接位置：上游是 ScreenplayAgent/分镜拆解产出的
+``sch.Shot``，下游是 07_GENERATION 里真正调用图像/视频模型的模块。之所以单独拆一个 Agent 而不是
+在生成模块里拼字符串，是因为 prompt 的措辞质量直接决定出图/出片效果，需要 LLM 按角色外貌、镜头
+语言等信息组织出一段"电影感"的描述，并且要能在生成失败/质检不通过时按失败原因重写（见
+``rewrite_image_prompt``），这属于需要语言理解能力的任务，不是纯模板拼接能做好的。
+"""
+
 from __future__ import annotations
 
 import sys
@@ -16,13 +25,17 @@ from .memory import ConversationMemory
 
 
 class PromptAgent(BaseAgent):
+    """根据分镜信息生成图像 prompt 和视频 prompt 的 Agent。"""
+
     SYSTEM_PROMPT_FILE = PROMPTS_DIR / "prompt_agent_system.txt"
 
     def __init__(self, provider: LLMProvider, max_retries: int = 3, memory: ConversationMemory | None = None):
+        """加载系统提示词文件并初始化基类；参数含义见 ``BaseAgent.__init__``。"""
         super().__init__(provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries, memory=memory)
 
     @staticmethod
     def _character_sheet(shot: sch.Shot, characters: list[sch.Character] | None) -> str:
+        """拼出本镜头出场角色的外貌说明文本，供拼进 image prompt。"""
         if not characters:
             return ""
         present = [c for c in characters if c.id in shot.character]
@@ -32,6 +45,12 @@ class PromptAgent(BaseAgent):
         return "角色外貌设定（必须逐字保留关键特征）：\n" + "\n".join(f"- {c.name}（{c.id}）：{c.appearance}" for c in present) + "\n"
 
     def generate_image_prompt(self, shot: sch.Shot, characters: list[sch.Character] | None = None) -> sch.ImagePrompt:
+        """为一个镜头生成图像生成模型用的 prompt（ImagePrompt）。
+
+        把镜头的地点、角色、动作、情绪、景别、机位角度等结构化字段，连同角色外貌设定一起
+        交给 LLM 组织成一段自然语言描述，而不是直接拼字符串，是因为好的图像 prompt 需要
+        按重要性排布关键词、补全画面细节，这部分交给 LLM 效果更好。
+        """
         user_prompt = (
             f"镜头信息：地点={shot.location}，角色={'、'.join(shot.character)}，动作={shot.action}，"
             f"情绪={shot.emotion.value}，景别={shot.camera.shot_size.value}，机位角度={shot.camera.angle.value}。\n"
@@ -42,6 +61,11 @@ class PromptAgent(BaseAgent):
         return self.generate(user_prompt, sch.ImagePrompt)
 
     def generate_video_prompt(self, shot: sch.Shot, image_prompt: sch.ImagePrompt) -> sch.VideoPrompt:
+        """基于已生成的图像 prompt（关键帧）和镜头运动信息，生成视频生成模型用的 prompt。
+
+        依赖 image_prompt 而不是重新从 shot 生成，是为了保证视频关键帧描述和已经生成的
+        静态图像描述保持一致，避免视频结果和封面图"长得不一样"。
+        """
         user_prompt = (
             f"关键帧图像 prompt：{image_prompt.prompt_text}\n"
             f"镜头运动：{shot.camera.movement.value}，时长：{shot.duration} 秒，情绪：{shot.emotion.value}。\n"
@@ -66,6 +90,7 @@ class PromptAgent(BaseAgent):
             f"reference_character_ids 保持 {image_prompt.reference_character_ids}，aspect_ratio 保持 '{image_prompt.aspect_ratio}'。"
         )
         rewritten = self.generate(user_prompt, sch.ImagePrompt)
+        # 重写只改措辞，这几个字段要强制拷回原值，防止 LLM"顺手"把 id/角色引用也改了
         return rewritten.model_copy(
             update={
                 "id": image_prompt.id,

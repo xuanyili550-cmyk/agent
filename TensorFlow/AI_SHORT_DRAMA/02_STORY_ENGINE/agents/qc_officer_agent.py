@@ -34,7 +34,12 @@ def rule_check(
     shots: list[sch.Shot],
     characters: list[sch.Character],
 ) -> list[sch.QCIssue]:
-    """不需要 LLM 的硬校验。"""
+    """不需要 LLM 的硬校验。
+
+    检查开场钩子/结尾悬念是否为空、场次/角色/对白/镜头之间的 id 引用是否都能对上、
+    镜头时长是否在合理区间、分镜总时长是否偏离目标时长太多。这些都是有确定答案的
+    结构性问题，用代码判比让 LLM 判更快更准，也不占 LLM 调用配额。
+    """
     issues: list[sch.QCIssue] = []
     char_ids = {c.id for c in characters}
     scene_ids = {s.id for s in scenes}
@@ -118,13 +123,17 @@ def rule_check(
 
 
 def has_blocking_issue(issues: list[sch.QCIssue]) -> bool:
+    """判断问题列表里是否存在阻断级别（BLOCKER 或 HIGH）的问题。"""
     return any(i.severity in (sch.IssueSeverity.BLOCKER, sch.IssueSeverity.HIGH) for i in issues)
 
 
 class QCOfficerAgent(BaseAgent):
+    """质检官 Agent：先跑硬校验，必要时再调 LLM 做语义质检，产出最终 QCVerdict。"""
+
     SYSTEM_PROMPT_FILE = PROMPTS_DIR / "qc_officer_agent_system.txt"
 
     def __init__(self, provider: LLMProvider, max_retries: int = 3, memory: ConversationMemory | None = None):
+        """加载系统提示词文件并初始化基类；参数含义见 ``BaseAgent.__init__``。"""
         super().__init__(provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries, memory=memory)
 
     def review(
@@ -137,6 +146,12 @@ class QCOfficerAgent(BaseAgent):
         *,
         skip_llm_on_blocker: bool = True,
     ) -> sch.QCVerdict:
+        """对一集内容做完整质检：先跑硬校验，再（视情况）调 LLM 做语义检查，合并出最终判定。
+
+        ``skip_llm_on_blocker``：硬校验已经发现 blocker 级引用错误时，语义检查大概率也没
+        意义（数据本身就不自洽），直接跳过 LLM 调用，省一次成本、也避免把错误数据喂给模型
+        产生误导性的语义反馈。
+        """
         rule_issues = rule_check(episode, scenes, shots, characters)
         verdict_id = f"qc_{episode.id}"
         if skip_llm_on_blocker and any(i.severity == sch.IssueSeverity.BLOCKER for i in rule_issues):
@@ -165,6 +180,8 @@ class QCOfficerAgent(BaseAgent):
             f"请按检查清单完成语义检查，id 使用 '{verdict_id}'，episode_id 为 '{episode.id}'。"
         )
         verdict = self.generate(user_prompt, sch.QCVerdict)
+        # 硬校验的问题原样保留，再把 LLM 发现的新问题（去重）追加进来，两层结果不互相覆盖
         merged = rule_issues + [i for i in verdict.issues if i not in rule_issues]
+        # 只要硬校验或 LLM 任一方认为不通过（存在阻断级问题），最终判定就是不通过
         passed = verdict.passed and not has_blocking_issue(merged)
         return verdict.model_copy(update={"id": verdict_id, "episode_id": episode.id, "issues": merged, "passed": passed})

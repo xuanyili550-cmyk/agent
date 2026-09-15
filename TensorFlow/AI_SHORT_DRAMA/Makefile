@@ -18,14 +18,16 @@ test:
 	$(PY) -m pytest
 
 test-fast:
-	$(PY) -m pytest tests/test_retry_ladder.py tests/test_story_engine.py 02_STORY_ENGINE/tests
+	$(PY) -m pytest tests/test_retry_ladder.py tests/test_story_engine.py tests/test_tool_agent.py 02_STORY_ENGINE/tests
 
 demo:
 	$(PY) 02_STORY_ENGINE/demo.py
 	$(PY) 13_INFRA/api/demo.py
 
 # 本地起 API（SQLite + eager 队列，不需要 Redis）。生产用 docker-compose。
+# 起来后浏览器打开 http://localhost:8000/ 就是 Web 控制台（API key 默认 dev-key）。
 api:
+	@echo "Web 控制台: http://localhost:8000/   API 文档: http://localhost:8000/docs   API key: $${API_KEYS:-dev-key}"
 	APP_ENV=dev CELERY_TASK_ALWAYS_EAGER=true CELERY_BROKER_URL=memory:// CELERY_RESULT_BACKEND=cache+memory:// \
 	LLM_PROVIDER=$${LLM_PROVIDER:-mock} QC_BACKEND=$${QC_BACKEND:-none} API_KEYS=$${API_KEYS:-dev-key} \
 	$(PY) -m uvicorn 13_INFRA.api.main:app --host 0.0.0.0 --port 8000 --reload

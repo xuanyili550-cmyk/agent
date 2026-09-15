@@ -1,7 +1,12 @@
-"""
-Lip-sync generation via a pluggable provider abstraction. Same pattern as the
-other 07_GENERATION providers: API client placeholders reading a key from an
-env var, raising NotConfiguredError if missing.
+"""口型同步（lip-sync）生成：可插拔的 provider 抽象。
+
+与 07_GENERATION 其他 provider 相同的模式：API 客户端占位实现，从环境变量读 key，
+缺失则抛 NotConfiguredError。
+
+流水线位置：视频（video_generator.py）和配音（tts_generator.py）都生成完之后，
+把两者送给口型同步服务，让人物嘴型对上台词；产物再进入 08_QC 与 09_POST。
+为什么做 Provider 抽象：口型同步服务商更迭很快，接口统一成 ``sync(video, audio) -> path``
+后，编排层与素材登记逻辑（LipSyncGenerator）不用跟着改。
 """
 
 from __future__ import annotations
@@ -20,6 +25,8 @@ from http_retry import request_with_retry  # noqa: E402
 
 
 class BaseLipSyncProvider(ABC):
+    """口型同步 provider 的抽象接口。"""
+
     @abstractmethod
     def sync(
         self,
@@ -28,13 +35,16 @@ class BaseLipSyncProvider(ABC):
         output_dir: str = "./outputs",
         seed: Optional[int] = None,
     ) -> str:
-        """Returns a local file path to the lip-synced video."""
+        """返回口型同步后视频的本地文件路径。"""
 
 
 class SyncSoLipSyncProvider(BaseLipSyncProvider):
+    """sync.so 口型同步 API 客户端（骨架）：提交任务，按任务 id 约定产物路径。"""
+
     API_URL = "https://api.sync.so/v2/generate"
 
     def __init__(self):
+        """从 SYNC_API_KEY 读取凭证；缺失立即报错。"""
         self.api_key = os.environ.get("SYNC_API_KEY")
         if not self.api_key:
             raise NotConfiguredError("SYNC_API_KEY is not set")
@@ -46,6 +56,10 @@ class SyncSoLipSyncProvider(BaseLipSyncProvider):
         output_dir: str = "./outputs",
         seed: Optional[int] = None,
     ) -> str:
+        """POST 视频 + 音频 URL 建任务；请求经 request_with_retry 带退避重试。
+
+        注意：这里只是骨架——没有轮询任务状态和下载产物，返回的是按任务 id 约定的输出路径。
+        """
         headers = {"x-api-key": self.api_key, "Content-Type": "application/json"}
         payload = {
             "model": "lipsync-1.9.0-beta",
@@ -60,12 +74,16 @@ class SyncSoLipSyncProvider(BaseLipSyncProvider):
 
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
+        # 响应里没有 id 时退回随机文件名，保证路径唯一
         out_path = out_dir / f"{task.get('id', uuid.uuid4().hex)}.mp4"
         return str(out_path)
 
 
 class LipSyncGenerator:
+    """口型同步门面：调用 provider 并把产物登记到素材台账。"""
+
     def __init__(self, provider: BaseLipSyncProvider, asset_log_path: str = "./outputs/asset_records.jsonl"):
+        """注入 provider 与台账路径。"""
         self.provider = provider
         self.asset_log_path = asset_log_path
 
@@ -80,6 +98,10 @@ class LipSyncGenerator:
         shot_id: Optional[str] = None,
         license: Optional[str] = None,
     ) -> str:
+        """执行口型同步并写 AssetRecord；返回产物路径。
+
+        ``prompt`` 字段记录输入的视频 / 音频路径，让台账能追溯这条产物由哪两份素材合成。
+        """
         file_path = self.provider.sync(video_path=video_path, audio_path=audio_path, output_dir=output_dir, seed=seed)
         record = AssetRecord(
             asset_id=new_asset_id("lipsync"),

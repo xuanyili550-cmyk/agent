@@ -1,3 +1,10 @@
+"""通用 LLM 调用任务：一次 prompt -> 一次补全，可选带长期会话记忆。
+
+它是 02_STORY_ENGINE 的 provider / memory 在队列里的薄封装，给 API 的 /llm 接口和调试用；
+完整的故事流水线（多个 Agent 串起来跑 LangGraph）走 story_task，不经过这里。
+用量记账（llm_usage 表 + Prometheus）由 _common.make_usage_sink 统一处理。
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -32,6 +39,7 @@ def llm_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
     base_mod = mod("02_STORY_ENGINE.agents.base")
     factory = mod("02_STORY_ENGINE.agents.provider_factory")
 
+    # mock 模式下忽略 payload 的 model：测试环境不能因为传了个真实模型名就去联网
     model = payload.get("model")
     if model and settings.llm_provider != "mock":
         provider = factory.build_provider(factory.resolve_provider_kind(model), model)
@@ -44,6 +52,7 @@ def llm_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
     context_id = payload.get("context_id")
 
     def usage_dict():
+        """把 provider 上一次调用的用量整理成返回值里的 usage 字段；provider 不报用量（如 mock）时为 None。"""
         usage = provider.last_usage
         if usage is None:
             return None
@@ -56,6 +65,7 @@ def llm_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
     sink = make_usage_sink(settings, context_id=context_id)
 
     if not context_id:
+        # 无状态单轮：不读不写历史
         text = provider.complete(system, prompt)
         if provider.last_usage:
             sink("llm_task", provider.last_usage)
@@ -68,6 +78,7 @@ def llm_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         compaction=params.get("compaction", "truncate"),
     )
     memory.lock_timeout = settings.llm_context_lock_timeout_seconds
+    # transaction() 持有该会话的锁：同一 context_id 的并发调用串行化，历史不会互相覆盖
     with memory.transaction():
         history = memory.window(system, prompt)
         text = provider.complete(system, prompt, history)

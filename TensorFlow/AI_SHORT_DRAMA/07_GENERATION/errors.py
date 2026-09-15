@@ -1,3 +1,14 @@
+"""07_GENERATION 生成层的统一异常类型。
+
+流水线位置：所有生成 provider（图像 / 视频 / TTS / 口型同步 / 声音克隆）和 http_retry 共用这一组异常，
+13_INFRA/queue/shot_task.py 按异常类型决定进入三级重试阶梯（retry_ladder.py）的哪一级。
+
+为什么单独一个模块：把"失败属于哪一类"这个语义放在异常类型上，而不是靠解析错误字符串，
+上层只需要 ``except`` 对应的类就能做路由；四种异常都继承 RuntimeError，不依赖任何第三方库，
+这样纯逻辑的 retry_ladder 也能在没有 torch / requests 的环境里单测。
+"""
+
+
 class NotConfiguredError(RuntimeError):
     """生成 provider 缺少必需的环境变量凭证。"""
 
@@ -22,5 +33,6 @@ class ResourceExhaustedError(RuntimeError):
 # importlib "07_GENERATION.errors"）。不做别名就会出现两份类对象，except 捕获不到对方抛的异常。
 import sys as _sys
 
+# setdefault：只在该名字还没被注册时才写入，避免覆盖已经以那个名字正常 import 的模块对象
 for _name in ("errors", "07_GENERATION.errors"):
     _sys.modules.setdefault(_name, _sys.modules[__name__])

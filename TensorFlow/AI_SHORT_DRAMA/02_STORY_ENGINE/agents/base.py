@@ -1,3 +1,14 @@
+"""Agent 基础设施：LLM provider 抽象、四种实现（Anthropic / OpenAI / 本地 transformers / mock）、
+结构化输出的 BaseAgent、会话记忆的构造函数。
+
+这是"Agent 大脑"这一层（对应《Agent 搭建指南》核心架构图里的"Claude Sonnet + 系统指令 + 上下文记忆"）：
+- ``LLMProvider``：业务代码只认 ``complete(system, user, history) -> str``，换模型只改构造那一行。
+- ``BaseAgent.generate(prompt, schema)``：让模型只输出符合 pydantic schema 的 JSON，校验失败把错误
+  回灌给模型重试（最多 max_retries 次）。"指令是最好的训练"——枚举字段的合法值清单直接写进 prompt，
+  比事后校验再重试省得多。
+- 每次调用的 token 用量通过 ``usage_sink`` 上报（四大监控指标之"Token 消耗"）。
+"""
+
 from __future__ import annotations
 
 import json
@@ -37,11 +48,11 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class NotConfiguredError(RuntimeError):
-    pass
+    """provider 没法用：缺 API key / mock 没注册对应 fixture。"""
 
 
 class AgentGenerationError(RuntimeError):
-    pass
+    """重试用尽后模型仍没给出合法的结构化输出。"""
 
 
 class TransientLLMError(RuntimeError):
@@ -49,12 +60,14 @@ class TransientLLMError(RuntimeError):
 
     BaseAgent 不在进程内重试它（避免和 SDK 自带的重试叠加成指数级等待），而是原样抛给
     Celery 任务层，由 ``BaseTask.autoretry_for`` 按指数退避重新投递——这就是三级重试里的
-    第一级"同样参数再试一次"。
+    第一级"同样参数再试一次"。配了备用模型时 ``FallbackProvider`` 会先在进程内切模型。
     """
 
 
 @dataclass
 class LLMUsage:
+    """一次 LLM 调用的 token 用量。"""
+
     provider: str
     model: str
     input_tokens: int = 0
@@ -62,10 +75,13 @@ class LLMUsage:
 
     @property
     def total_tokens(self) -> int:
+        """输入 + 输出。"""
         return self.input_tokens + self.output_tokens
 
 
 class LLMProvider(ABC):
+    """所有模型后端的抽象：一个 complete() 加几个给记忆层用的属性。"""
+
     # 模型上下文窗口上限（token）。ConversationMemory 用它决定历史消息什么时候该裁剪。
     context_window: int = context_window_for(None)
     # 单次输出上限；连同结构化标记一起作为 ConversationMemory 的 reserve_tokens 余量。
@@ -86,12 +102,15 @@ class LLMProvider(ABC):
         return estimate_tokens(text)
 
     def _estimate_usage(self, system_prompt: str, user_prompt: str, history: list[Message] | None, reply: str) -> LLMUsage:
+        """没有官方 usage 字段的后端（本地模型 / mock）用 count_tokens 估一份。"""
         prompt_tokens = self.count_tokens(system_prompt) + self.count_tokens(user_prompt)
         prompt_tokens += sum(self.count_tokens(m["content"]) for m in (history or []))
         return LLMUsage(self.provider_name, self.model, prompt_tokens, self.count_tokens(reply))
 
 
 class AnthropicProvider(LLMProvider):
+    """Claude 后端（Anthropic Messages API）。"""
+
     provider_name = "anthropic"
 
     def __init__(
@@ -102,6 +121,7 @@ class AnthropicProvider(LLMProvider):
         timeout_seconds: float = 120.0,
         sdk_max_retries: int = 2,
     ):
+        """key 从环境变量读；没配直接抛 NotConfiguredError，而不是等到第一次调用才失败。"""
         api_key = os.environ.get(api_key_env)
         if not api_key:
             raise NotConfiguredError(
@@ -116,6 +136,7 @@ class AnthropicProvider(LLMProvider):
         self._client = None
 
     def _get_client(self):
+        """延迟创建 SDK client：import anthropic 有开销，且 mock/local 环境根本用不到。"""
         if self._client is None:
             import anthropic
 
@@ -124,6 +145,7 @@ class AnthropicProvider(LLMProvider):
         return self._client
 
     def complete(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> str:
+        """system 走独立参数，history + 本次 prompt 组成 messages；只拼接 text 块。"""
         import anthropic
 
         try:
@@ -146,6 +168,8 @@ class AnthropicProvider(LLMProvider):
 
 
 class OpenAIProvider(LLMProvider):
+    """OpenAI Chat Completions（也兼容任何 OpenAI 协议的网关，如 vLLM / Ollama）。"""
+
     provider_name = "openai"
 
     def __init__(
@@ -156,6 +180,7 @@ class OpenAIProvider(LLMProvider):
         timeout_seconds: float = 120.0,
         sdk_max_retries: int = 2,
     ):
+        """同 AnthropicProvider：key 没配立即报错。"""
         api_key = os.environ.get(api_key_env)
         if not api_key:
             raise NotConfiguredError(
@@ -171,6 +196,7 @@ class OpenAIProvider(LLMProvider):
         self._encoding = None
 
     def _get_client(self):
+        """延迟创建 SDK client。"""
         if self._client is None:
             import openai
 
@@ -178,6 +204,7 @@ class OpenAIProvider(LLMProvider):
         return self._client
 
     def count_tokens(self, text: str) -> int:
+        """有 tiktoken 就精确计数，否则退回估算。"""
         # tiktoken 首次使用要下载 BPE 词表；离线环境拿不到就退回估算，不能因为算 token 把主流程搞挂
         if self._encoding is None:
             try:
@@ -194,6 +221,7 @@ class OpenAIProvider(LLMProvider):
         return len(self._encoding.encode(text))
 
     def complete(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> str:
+        """system 作为第一条 message，其后 history，再本次 prompt。"""
         import openai
 
         try:
@@ -219,14 +247,16 @@ class OpenAIProvider(LLMProvider):
 
 
 class LocalTransformersProvider(LLMProvider):
-    """Runs a local, free, open-weight instruct model via transformers -- no
-    API key, no network calls at inference time (only the first weight
-    download). Default model is ungated on Hugging Face; swap model_id for
-    any other open chat model (see 06_MODELS/llm/registry.json)."""
+    """用 transformers 在本机跑免费开源指令模型：不需要 API key，推理时不联网（只有首次下载权重）。
+
+    默认模型在 Hugging Face 上不需要申请访问；换任何开源 chat 模型只需改 model_id
+    （候选见 06_MODELS/llm/registry.json）。
+    """
 
     provider_name = "local"
 
     def __init__(self, model_id: str = "microsoft/Phi-3.5-mini-instruct", device_map: str = "auto", max_new_tokens: int = 2048):
+        """只记参数，不加载权重：加载放到第一次 complete()，worker 启动才不会被几 GB 权重拖慢。"""
         self.model_id = model_id
         self.model = model_id
         self.device_map = device_map
@@ -236,12 +266,14 @@ class LocalTransformersProvider(LLMProvider):
         self._pipe = None
 
     def count_tokens(self, text: str) -> int:
+        """权重已加载时用模型自己的 tokenizer，精确；未加载时估算。"""
         # 权重已加载时用模型自己的 tokenizer，精确；未加载时不为了数 token 去加载几 GB 权重
         if self._pipe is not None and getattr(self._pipe, "tokenizer", None) is not None:
             return len(self._pipe.tokenizer.encode(text, add_special_tokens=False))
         return estimate_tokens(text)
 
     def _load(self):
+        """首次调用时加载 pipeline，并用模型 config 里的真实上下文长度覆盖前缀表的估计值。"""
         if self._pipe is not None:
             return self._pipe
         import torch
@@ -260,6 +292,7 @@ class LocalTransformersProvider(LLMProvider):
         return self._pipe
 
     def complete(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> str:
+        """贪心解码（do_sample=False）：结构化输出要的是确定性，不是创意。"""
         pipe = self._load()
         messages = [
             {"role": "system", "content": system_prompt},
@@ -275,20 +308,32 @@ class LocalTransformersProvider(LLMProvider):
 
 FixtureFn = Callable[[str, str], str]
 
+# MockLLMProvider 里给"没有 [TARGET_SCHEMA=...] 标记"的调用（ToolAgent 的工具循环、摘要压缩）用的 fixture 键
+DEFAULT_FIXTURE_KEY = "__default__"
+
 
 class MockLLMProvider(LLMProvider):
+    """离线 mock：按 prompt 里的 ``[TARGET_SCHEMA=X]`` 标记返回预先注册的 fixture（字符串或函数）。
+
+    测试和 demo 全靠它：不需要 API key、不下载模型、结果确定。fixture 是函数时会收到
+    (system_prompt, user_prompt)，可以按 prompt 内容返回不同结果（例如按集号出不同剧集）。
+    没有 schema 标记的调用（ToolAgent 循环、summarize 压缩）走 ``__default__`` 键。
+    """
+
     provider_name = "mock"
     model = "mock"
 
     def __init__(self, fixtures: dict[str, str | FixtureFn]):
+        """``fixtures``：schema 名 -> 回复；``__default__`` -> 无标记调用的回复。"""
         self.fixtures = fixtures
         self.context_window = 128_000
         self.calls: list[dict] = []  # 记录每次调用带了多少条历史，方便测试/调试
 
     def complete(self, system_prompt: str, user_prompt: str, history: list[Message] | None = None) -> str:
+        """查 fixture 并记录调用；没注册对应 fixture 抛 NotConfiguredError（提示测试少配了什么）。"""
         self.calls.append({"history_len": len(history or []), "user_prompt": user_prompt})
         match = re.search(r"\[TARGET_SCHEMA=(\w+)\]", user_prompt)
-        schema_name = match.group(1) if match else None
+        schema_name = match.group(1) if match else DEFAULT_FIXTURE_KEY
         if schema_name not in self.fixtures:
             raise NotConfiguredError(f"MockLLMProvider 没有为 schema={schema_name} 注册 fixture")
         fixture = self.fixtures[schema_name]
@@ -298,6 +343,10 @@ class MockLLMProvider(LLMProvider):
 
 
 def _extract_json(text: str) -> str:
+    """从模型输出里抠出 JSON：优先 ```json 代码块，其次第一个 { 到最后一个 }。
+
+    模型经常无视"不要加 markdown"的指令，与其重试一次不如先容忍。
+    """
     text = text.strip()
     fence = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
     if fence:
@@ -309,11 +358,12 @@ def _extract_json(text: str) -> str:
 
 
 def _collect_enums(node: object, out: dict[str, list[str]] | None = None) -> dict[str, list[str]]:
-    """Walks a pydantic model_json_schema() dict (both top-level properties and
-    $defs) and collects every {"title": ..., "enum": [...]} it finds, keyed by
-    title. Used to hand the LLM the exact closed set of legal values for enum
-    fields (e.g. ShotSize, CameraAngle) instead of relying on it to guess a
-    plausible-looking string and burning a validation-retry when it's wrong."""
+    """遍历 pydantic ``model_json_schema()`` 的 dict（顶层 properties 和 $defs 都走一遍），
+    把所有 ``{"title": ..., "enum": [...]}`` 按 title 收集起来。
+
+    用途：把枚举字段（ShotSize、CameraAngle……）的合法值原样告诉模型，而不是指望它猜一个
+    "看起来像"的字符串然后白白浪费一次校验重试。
+    """
     if out is None:
         out = {}
     if isinstance(node, dict):
@@ -328,6 +378,7 @@ def _collect_enums(node: object, out: dict[str, list[str]] | None = None) -> dic
 
 
 def _enum_cheatsheet(schema: type[BaseModel]) -> str:
+    """把 schema 里所有枚举字段渲染成一段"只能从这些值里选"的提示；没有枚举返回空串。"""
     enums = _collect_enums(schema.model_json_schema())
     if not enums:
         return ""
@@ -336,6 +387,8 @@ def _enum_cheatsheet(schema: type[BaseModel]) -> str:
 
 
 class BaseAgent(ABC):
+    """结构化输出 Agent 的模板：拼 prompt -> 调 provider -> 校验 JSON -> 失败回灌重试。"""
+
     def __init__(
         self,
         provider: LLMProvider,
@@ -343,6 +396,7 @@ class BaseAgent(ABC):
         max_retries: int = 3,
         memory: ConversationMemory | None = None,
     ):
+        """``max_retries``：JSON 校验失败后最多纠正几次；``memory``：传了就带会话历史。"""
         self.provider = provider
         self.system_prompt = system_prompt
         self.max_retries = max_retries
@@ -356,6 +410,7 @@ class BaseAgent(ABC):
         self.usage_sink: Callable[[str, LLMUsage], None] | None = None
 
     def _record_usage(self) -> None:
+        """把 provider 最近一次调用的用量记到本地流水并上报 sink。"""
         usage = self.provider.last_usage
         if usage is None:
             return
@@ -364,6 +419,7 @@ class BaseAgent(ABC):
             self.usage_sink(self.__class__.__name__, usage)
 
     def generate(self, user_prompt: str, schema: type[T]) -> T:
+        """让模型输出一个 ``schema`` 对象；校验不过就把错误信息附在 prompt 后重试。"""
         marker = (
             f"\n\n[TARGET_SCHEMA={schema.__name__}]\n"
             "只输出符合该 schema 字段结构的单个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记。"
@@ -396,6 +452,7 @@ class BaseAgent(ABC):
 
     @staticmethod
     def _try_parse(raw: str, schema: type[T]) -> tuple[T | None, Exception | None]:
+        """解析 + 校验；返回 (对象, None) 或 (None, 异常)。"""
         try:
             return schema.model_validate_json(_extract_json(raw)), None
         except (ValidationError, json.JSONDecodeError) as exc:
@@ -427,6 +484,7 @@ def build_memory(
     if compaction == "summarize":
 
         def summarizer(messages: list[Message]) -> str:
+            """把被裁掉的旧轮次交给同一个模型压成摘要。"""
             transcript = "\n\n".join(f"[{m['role']}]\n{m['content']}" for m in messages)
             return provider.complete(SUMMARY_SYSTEM_PROMPT, transcript).strip()
 

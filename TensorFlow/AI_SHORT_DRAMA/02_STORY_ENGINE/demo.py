@@ -1,3 +1,12 @@
+"""故事引擎离线 demo：用 MockLLMProvider 跑通"创意 -> Story Bible -> 章节规划 -> 角色 -> 两集剧本
+-> 质检官/总编审 -> 分镜 -> 提示词"，再让制片助理 Agent 带着工具在产出上做一轮检查，最后把
+03_STRUCTURED_DATA 格式的 JSON 写到 demo_output/。
+
+不需要 API key、不下载模型：每个 schema 的输出都由下面的 fixture 函数按 prompt 内容构造，
+13_INFRA 的测试和 mock 模式（LLM_PROVIDER=mock）复用同一份 ``build_mock_provider()``。
+运行：``python3 02_STORY_ENGINE/demo.py``。
+"""
+
 from __future__ import annotations
 
 import json
@@ -14,10 +23,13 @@ for _p in Path(__file__).resolve().parents:
 
 import schemas as sch
 from agents import (
+    CallbackGate,
     ChapterPlannerAgent,
     CharacterAgent,
     ChiefEditorAgent,
     DialogueBatch,
+    DramaAssistantAgent,
+    DramaContext,
     EpisodeAgent,
     FileConversationStore,
     MockLLMProvider,
@@ -28,6 +40,7 @@ from agents import (
     StoryboardAgent,
     build_memory,
 )
+from agents.base import DEFAULT_FIXTURE_KEY
 from planners import EpisodePlanner, SeasonArcPlanner
 from workflows.pipeline import AgentBundle, build_graph
 
@@ -56,6 +69,7 @@ SCENE_FIXTURES = {
 
 
 def _story_bible_fixture() -> str:
+    """StoryBible 的固定输出：一个重生复仇豪门题材的世界观 + 三个角色 id。"""
     world = sch.WorldSetting(
         id="world_001",
         name="临江市豪门圈",
@@ -87,6 +101,7 @@ def _story_bible_fixture() -> str:
 
 
 def _character_fixture(_system: str, user: str) -> str:
+    """按 prompt 里的角色提示词（女主角/男主角/其他）返回三个固定角色之一。"""
     if "女主角" in user:
         char = sch.Character(
             id="char_su_wanwan",
@@ -151,6 +166,7 @@ EPISODE_FIXTURES = {
 
 
 def _episode_fixture(_system: str, user: str) -> str:
+    """按 prompt 里的集号返回对应的 Episode fixture（超出范围退回第 1 集）。"""
     m = re.search(r"这是第 (\d+) 集", user)
     number = int(m.group(1)) if m else 1
     f = EPISODE_FIXTURES.get(number, EPISODE_FIXTURES[1])
@@ -166,6 +182,7 @@ def _episode_fixture(_system: str, user: str) -> str:
 
 
 def _script_fixture(_system: str, user: str) -> str:
+    """Script fixture：episode_id 和 version 都从 prompt 里抠出来，这样编审打回重写时 version 会递增。"""
     m = re.search(r"episode_id='([^']+)'", user)
     episode_id = m.group(1) if m else "ep_001"
     m_v = re.search(r"version 填 (\d+)", user)
@@ -189,6 +206,7 @@ def _script_fixture(_system: str, user: str) -> str:
 
 
 def _scene_fixture(_system: str, user: str) -> str:
+    """Scene fixture：按 scene_number 和 episode_id 组合出稳定的 scene id。"""
     m = re.search(r"scene_number=(\d+)", user)
     scene_num = int(m.group(1))
     m_ep = re.search(r"episode_id='ep_(\d+)'", user)
@@ -211,6 +229,7 @@ def _scene_fixture(_system: str, user: str) -> str:
 
 
 def _shots_fixture(_system: str, user: str) -> str:
+    """每个场次固定两个镜头：一个特写推镜、一个中景静止，镜头 id 与场次 id 对齐。"""
     m = re.search(r"scene_id='([^']+)'", user)
     scene_id = m.group(1)
     _, ep_str, scene_str = scene_id.split("_")
@@ -242,6 +261,7 @@ def _shots_fixture(_system: str, user: str) -> str:
 
 
 def _dialogue_fixture(_system: str, user: str) -> str:
+    """给 prompt 里出现的前两个镜头各配一句台词，角色从"出场角色 id"里轮流取。"""
     shot_ids = re.findall(r"shot_\d{3}_\d{2}_\d{2}", user)
     chars_match = re.search(r"出场角色 id：([^\n]+)", user)
     chars = chars_match.group(1).split("、") if chars_match else ["char_su_wanwan"]
@@ -269,6 +289,7 @@ def _dialogue_fixture(_system: str, user: str) -> str:
 
 
 def _image_prompt_fixture(_system: str, user: str) -> str:
+    """ImagePrompt fixture：id 由 shot_id 派生，保证 Shot -> ImagePrompt 一一对应。"""
     m = re.search(r"shot_id='([^']+)'", user)
     shot_id = m.group(1)
     prompt = sch.ImagePrompt(
@@ -284,6 +305,7 @@ def _image_prompt_fixture(_system: str, user: str) -> str:
 
 
 def _video_prompt_fixture(_system: str, user: str) -> str:
+    """VideoPrompt fixture：引用 prompt 里指定的 image_prompt_id，形成 关键帧 -> 视频 的链。"""
     m_shot = re.search(r"shot_id='([^']+)'", user)
     m_img = re.search(r"image_prompt_id 填 '([^']+)'", user)
     shot_id = m_shot.group(1)
@@ -304,6 +326,7 @@ def _video_prompt_fixture(_system: str, user: str) -> str:
 
 
 def _qc_verdict_fixture(_system: str, user: str) -> str:
+    """质检官 fixture：通过，86 分，带一条 low 级节奏建议（让总编审有东西可看）。"""
     m = re.search(r"id 使用 '([^']+)'，episode_id 为 '([^']+)'", user)
     verdict = sch.QCVerdict(
         id=m.group(1) if m else "qc_ep_001",
@@ -325,6 +348,7 @@ def _qc_verdict_fixture(_system: str, user: str) -> str:
 
 
 def _editorial_fixture(_system: str, user: str) -> str:
+    """总编审 fixture：approve。测试里会用别的函数覆盖它来演练 revise / reject 分支。"""
     m = re.search(r"id 使用 '([^']+)'，episode_id 为 '([^']+)'", user)
     decision = sch.EditorialDecision(
         id=m.group(1) if m else "ed_ep_001",
@@ -339,7 +363,8 @@ def _editorial_fixture(_system: str, user: str) -> str:
 
 
 def _season_arc_fixture(_system: str, user: str) -> str:
-    # 章节规划师（LLM 版）的 mock：返回和规则版一致的分幕，只是文案更具体
+    """章节规划师（LLM 版）的 mock：返回和规则版一致的分幕，只是文案更具体。"""
+    # 复用规则版规划器保证集 id 分配正确，再替换成更具体的文案
     arc = SeasonArcPlanner(num_episodes=12).plan(sch.StoryBible.model_validate_json(_story_bible_fixture()))
     beats = [
         b.model_copy(update={"description": f"{b.act}：{['苏晚晚重生并借订婚宴试探敌人', '结盟陆景琛，苏梦瑶与继母反扑', '揭开三年前死亡真相，家族清算'][i]}"})
@@ -348,9 +373,44 @@ def _season_arc_fixture(_system: str, user: str) -> str:
     return arc.model_copy(update={"beats": beats}).model_dump_json()
 
 
+def _assistant_fixture(_system: str, user: str) -> str:
+    """制片助理（ToolAgent）的 mock 脚本：按上一条工具结果决定下一步，演练"规划 -> 查 -> 验证 -> 标记 -> 汇报"。
+
+    真实模型会自己决定顺序；mock 只是把一条合理的轨迹写死，让 demo 和测试不需要 API key 也能
+    验证工具循环、确认门和指标链路。
+    """
+
+    def tool(thought: str, name: str, **args) -> str:
+        """一条"调用工具"的协议消息。"""
+        return json.dumps({"thought": thought, "action": "tool", "tool": name, "args": args}, ensure_ascii=False)
+
+    def final(thought: str, answer: str) -> str:
+        """一条"最终回答"的协议消息。"""
+        return json.dumps({"thought": thought, "action": "final", "answer": answer}, ensure_ascii=False)
+
+    if "工具 list_episodes 的结果" in user:
+        return tool("先对第 1 集跑硬校验", "run_rule_check", episode_id="ep_001")
+    if "工具 run_rule_check 的结果" in user:
+        if '"has_blocker": true' in user:
+            return tool("有 blocker，需要人工复核", "flag_episode_for_human_review", episode_id="ep_001", reason="硬校验发现 blocker")
+        m = re.search(r'"issue_count": (\d+)', user)
+        count = m.group(1) if m else "0"
+        return final("无 blocker", f"ep_001 硬校验通过：{count} 条问题，无 blocker，不需要人工复核。")
+    if "工具 flag_episode_for_human_review 的结果" in user:
+        if "调用失败" in user:
+            return final("标记被拒", "ep_001 硬校验发现 blocker，但标记人工复核未获批准，请手动处理。")
+        return final("已标记", "ep_001 硬校验发现 blocker，已标记为需要人工复核。")
+    if "不符合输出协议" in user or "不能再调用工具" in user or "这不会得到新信息" in user:
+        return final("直接作答", "已根据现有信息作答。")
+    # 首轮：先看有哪些集
+    return tool("先列出所有集", "list_episodes")
+
+
 def build_mock_provider() -> MockLLMProvider:
+    """构造带全部 fixture 的 mock provider；13_INFRA 的 LLM_PROVIDER=mock 也用它。"""
     return MockLLMProvider(
         {
+            DEFAULT_FIXTURE_KEY: _assistant_fixture,
             "StoryBible": _story_bible_fixture(),
             "SeasonArc": _season_arc_fixture,
             "Character": _character_fixture,
@@ -367,7 +427,25 @@ def build_mock_provider() -> MockLLMProvider:
     )
 
 
+def run_assistant_demo(provider: MockLLMProvider, result: dict) -> None:
+    """让制片助理 Agent 在流水线产出上跑一轮：展示工具循环、确认门和每一步的记录。"""
+    ctx = DramaContext.from_state(result)
+
+    def confirm(spec, args) -> bool:
+        """demo 里的确认门：打印"要做什么"然后放行；真实场景换成 ConsoleGate / 审批系统回调。"""
+        print(f"  [确认门] 工具 {spec.name} 请求执行，参数 {json.dumps(args, ensure_ascii=False)} -> 放行")
+        return True
+
+    assistant = DramaAssistantAgent(provider, ctx, gate=CallbackGate(confirm), max_tool_rounds=5)
+    run = assistant.ask("帮我检查第 1 集有没有引用错误，有问题就标记人工复核。")
+    for step in run.steps:
+        print(f"  [工具] {step.tool}({json.dumps(step.args, ensure_ascii=False)}) -> {step.status} ({step.duration_seconds * 1000:.1f} ms)")
+    print(f"  [回复] {run.answer}")
+    print(f"  工具轮数={run.tool_rounds} 停止原因={run.stopped_reason} 工具成功率={run.tool_success_rate} token≈{run.total_tokens}")
+
+
 def main() -> None:
+    """跑完整流水线 + 制片助理 + 写 JSON。"""
     provider = build_mock_provider()
     out_dir = ROOT / "02_STORY_ENGINE" / "demo_output"
     out_dir.mkdir(exist_ok=True)
@@ -417,6 +495,8 @@ def main() -> None:
     print(f"image_prompts={len(result['image_prompts'])} video_prompts={len(result['video_prompts'])}")
     print("\n=== Conversation Memory ===")
     print(f"本次 LLM 调用 {len(provider.calls)} 次，历史累计 {memory.turn_count} 轮，最后一次调用携带 {provider.calls[-1]['history_len']} 条历史消息")
+    print("\n=== Drama Assistant (ToolAgent：规划 -> 查 -> 验证 -> 标记 -> 汇报) ===")
+    run_assistant_demo(provider, result)
 
     story_file = sch.StoryFile(story_bible=result["story_bible"], season_arcs=[result["season_arc"]])
     characters_file = sch.CharactersFile(characters=result["characters"])

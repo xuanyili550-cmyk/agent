@@ -251,6 +251,58 @@ Redis 存储另外用本机临时起的 `redis-server` 实跑验证过读写、T
 "选最强的"和"按来源排除"这两者之间的取舍，这里没有替你做决定，需要你按自己的实际
 约束逐类别挑选，不能只看许可证。
 
+## 对照《Agent 搭建指南》的落地清单（工具 / 记忆 / 多步骤 / 部署 / 监控 / 踩坑）
+
+这个项目按"Agent 大脑 + 工具层 + 推理层 + 记忆 + 监控 + 人机协作"的标准结构落地，每一项都有对应代码和测试：
+
+| 指南要求 | 本项目实现 | 代码位置 |
+|---|---|---|
+| 步骤 2 定义 Agent 核心行为（系统指令） | 每个 Agent 一份系统提示词文件，"指令是最好的训练"：枚举合法值直接写进 prompt | `02_STORY_ENGINE/prompts/*.txt`、`agents/base.py::_enum_cheatsheet` |
+| 步骤 3 注册工具能力（`@agent.tool`） | `ToolRegistry.tool` 装饰器：函数签名自动生成参数 JSON Schema（pydantic），docstring 即工具说明 | `02_STORY_ENGINE/agents/tools.py` |
+| 步骤 4 Memory（persistent, sqlite） | `ConversationMemory` + 四种存储：内存 / JSON 文件 / **SQLite** / Redis；历史永不删，触顶才裁剪或摘要压缩 | `agents/memory.py`（`SQLiteConversationStore`），`LLM_CONTEXT_SQLITE_PATH` |
+| 步骤 5 多步骤工作流（思考 -> 工具 -> 思考 -> 回复） | `ToolAgent.run()`：模型每轮输出 `{"action": "tool"/"final"}`，工具结果回灌，直到给出最终答案；`DramaAssistantAgent` 是具体实例 | `agents/tool_agent.py`、`agents/drama_assistant.py` |
+| 推理层：规划 -> 执行 -> 验证 -> 修正 -> 再执行 | 剧本层：质检官 + 总编审 + 回灌重写（LangGraph）；镜头层：三级重试阶梯；助理层：`run_rule_check` 验证后再决定是否标记 | `workflows/pipeline.py`、`07_GENERATION/retry_ladder.py` |
+| Docker 部署 | 多阶段 Dockerfile + compose（Postgres / Redis / API / 每个队列一个 worker / Prometheus） | `13_INFRA/docker/` |
+| 监控 1 Token 消耗 | 每次 LLM 调用 -> `llm_usage` 表 + `drama_llm_tokens_total` / `drama_llm_cost_usd_total` | `13_INFRA/queue/_common.py::make_usage_sink` |
+| 监控 2 工具调用成功率 | 每次工具调用 -> `drama_tool_calls_total{tool,status}` + 耗时直方图 | `make_tool_call_sink`、`observability/metrics.py` |
+| 监控 3 执行时间 | 队列任务耗时直方图 `drama_task_duration_seconds`，Agent 每次 run 的工具轮数直方图 | `queue/base_task.py`、`record_agent_run` |
+| 监控 4 错误率 | `drama_task_total{status}` 的 failure 占比；降级次数 `drama_llm_fallback_total` | `GET /metrics`、`GET /metrics/summary`（四项汇总成 JSON） |
+| 坑 1 无限循环 | `max_tool_rounds` 默认 **5**（`AGENT_MAX_TOOL_ROUNDS`）；连续相同 (工具, 参数) 被识别为原地打转并强制作答；仍不收敛抛 `AgentLoopError` | `tool_agent.py` |
+| 坑 2 上下文爆炸 | 一次 run 的中间轮次不进长期记忆；历史按模型上下文上限裁剪，`compaction="summarize"` 用同一模型压成摘要 | `memory.py::ConversationMemory.window` |
+| 坑 3 工具权限过大 | 工具级确认门：`requires_confirmation=True` 的工具默认拒绝；`AllowlistGate`（生产，`AGENT_TOOL_ALLOWLIST`）/ `ConsoleGate`（本地 y/n）/ `CallbackGate`（审批系统） | `tools.py`、`_common.py::build_confirmation_gate` |
+| 坑 4 降级响应（多模型策略） | `FallbackProvider`：主模型限流/超时/没配 key 时按顺序切备用，带熔断冷却自动恢复；`LLM_FALLBACK_MODELS=gpt-4o-mini,microsoft/Phi-3.5-mini-instruct` | `agents/fallback_provider.py`、`provider_factory.build_provider` |
+| 原则 人机协作 | 流水线级：`REQUIRE_HUMAN_REVIEW` 停在 `awaiting_review` 等 `/approve`；工具级：确认门 | `13_INFRA/orchestration.py` |
+
+跑一遍看效果（全部 mock，不需要 API key）：
+
+```bash
+python3 02_STORY_ENGINE/demo.py          # 末尾 "Drama Assistant" 段：list_episodes -> run_rule_check -> 回复
+pytest tests/test_tool_agent.py          # 20 个用例：工具/确认门/循环上限/重复检测/降级/SQLite 记忆/助理/四大指标
+```
+
+API 侧：`POST /pipelines/{run_id}/assistant {"question": "帮我检查第 1 集有没有引用错误"}` 把问题交给
+`assistant_task`（llm 队列），返回答案、每一步工具调用记录、token 用量；`GET /metrics/summary` 看四大指标。
+
+### Web 控制台（不用 Postman）
+
+```bash
+make api            # 本地起 API：SQLite + eager 队列 + mock LLM，不需要 Redis / API key
+open http://localhost:8000/   # API key 填 dev-key
+```
+
+`13_INFRA/api/static/index.html` 是零构建、零依赖的单文件页面，由 FastAPI 在 `/`（或 `/ui`）直接托管，
+Docker 镜像里同样自带。五个页面对应平台的全部能力：
+
+| 页面 | 能做什么 |
+|---|---|
+| 流水线 | 填一句创意启动流水线；运行列表按状态筛；详情页看每集状态 / AI 编审结果 / 成片 / 发布记录；勾选集 **批准进入生产**、打回、重新渲染；看剧本正文与质检官/总编审判定；查本次 LLM 用量；运行中自动轮询 |
+| 制片助理 | 对一次运行的产出提问（有快捷问题），聊天式展示 Agent 每一步调用了什么工具、参数、耗时、成功/被拒，以及 token 成本；生产模式自动轮询任务结果 |
+| 项目 | 建项目、列项目、看项目下的角色和剧集 |
+| 监控指标 | 四大指标卡片 + 按模型 / 工具 / 任务的明细，可 5 秒自动刷新，直达 Prometheus 原始数据 |
+| 单步任务 | 选队列、填 payload（可一键填示例、看 JSON Schema）入队，查任务状态 |
+
+API key 只存在浏览器 localStorage；页面本身不需要 key 就能打开，数据请求才带 `X-API-Key`。
+
 ## 跨模块 import 约定
 
 每个顶层目录名都是数字开头的（`01_CONTENT`、`02_STORY_ENGINE`……），所以都不能作为

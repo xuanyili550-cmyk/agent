@@ -1,3 +1,9 @@
+"""整集渲染编排：拼接镜头 -> 适配 9:16 竖屏 -> 硬烧字幕 -> 混 BGM -> 叠音效 -> Episode.mp4。
+
+这是 09_POST 的总入口（assemble.py 只是往这里喂配置）。每一步都是"有输入才做、没有就跳过"，
+所以只有镜头视频的最小配置也能出片；每一步的产物都落在独立的临时工作目录里，便于 keep_intermediate 调试。
+"""
+
 from __future__ import annotations
 
 import shutil
@@ -30,11 +36,11 @@ def fit_vertical_frame(
     height: int = 1920,
     mode: str = "crop",
 ) -> Path:
-    """Fits a video to a 9:16 vertical frame.
+    """把视频适配到 9:16 竖屏画框。
 
-    mode="crop": scale to fully cover the frame, then center-crop the overflow (no bars,
-    loses some edge content). mode="pad": scale to fit inside the frame, then pad the
-    remainder with black bars (keeps full frame, adds letterboxing).
+    mode="crop"：缩放到完全覆盖画框，再居中裁掉溢出部分（无黑边，但会丢一点边缘内容）。
+    mode="pad"：缩放到完整放进画框，剩余部分补黑边（保留全部画面，但有上下/左右黑边）。
+    默认 crop，因为竖屏短剧平台上黑边非常影响观感。
     """
     input_path = Path(input_path)
     output_path = Path(output_path)
@@ -43,8 +49,10 @@ def fit_vertical_frame(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if mode == "crop":
+        # increase：等比放大到至少覆盖目标框，然后 crop 到精确尺寸
         vf = f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1"
     elif mode == "pad":
+        # decrease：等比缩小到能放进目标框，然后用黑色 pad 补齐并居中
         vf = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"
     else:
         raise ValueError(f"Unknown mode '{mode}', expected 'crop' or 'pad'")
@@ -60,7 +68,7 @@ def fit_vertical_frame(
         "libx264",
         "-pix_fmt",
         "yuv420p",
-        "-c:a",
+        "-c:a",  # 只改画面，音频原样复制
         "copy",
         str(output_path),
     ]
@@ -72,6 +80,12 @@ def fit_vertical_frame(
 
 @dataclass
 class EpisodeRenderConfig:
+    """一集的渲染参数。
+
+    shots 是必填的镜头列表；dialogue（流水线对白 JSON）和 whisper_result（ASR 结果）二选一提供字幕来源，
+    dialogue 优先；bgm_path / sfx_events 可选；keep_intermediate=True 时保留临时工作目录用于排查。
+    """
+
     episode_id: str
     output_dir: str
     shots: List[Union[str, TimelineClip]]
@@ -87,14 +101,14 @@ class EpisodeRenderConfig:
 
 
 def render_episode(config: EpisodeRenderConfig) -> Path:
-    """Full post-production pipeline: concatenate shots -> fit 9:16 -> burn subtitles
-    (if dialogue/ASR provided) -> mix BGM (if provided) -> mix SFX (if provided) ->
-    Episode.mp4. Each step is skipped gracefully if its inputs aren't provided.
+    """完整后期流水线：拼接镜头 -> 适配 9:16 -> 硬烧字幕（提供了对白/ASR 时）-> 混 BGM（提供了时）
+    -> 叠音效（提供了时）-> Episode.mp4。任何一步缺少输入都会被静默跳过。
     """
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     work_dir = Path(tempfile.mkdtemp(prefix=f"render_{config.episode_id}_"))
 
+    # current 始终指向"当前最新的中间产物"，每一步以它为输入、产出下一个编号文件
     current = concatenate_clips(config.shots, work_dir / "01_timeline.mp4", width=config.width, height=config.height)
     current = fit_vertical_frame(
         current,
@@ -126,6 +140,7 @@ def render_episode(config: EpisodeRenderConfig) -> Path:
     if config.sfx_events:
         current = mix_sfx(current, config.sfx_events, work_dir / "05_sfx.mp4")
 
+    # 最后一步用 -c copy 把中间产物"搬"到输出目录：不重编码，只是重新封装，顺便让 moov 等元数据规整
     final_path = output_dir / "Episode.mp4"
     _run(["ffmpeg", "-y", "-i", str(current), "-c", "copy", str(final_path)])
 
@@ -136,6 +151,7 @@ def render_episode(config: EpisodeRenderConfig) -> Path:
 
 
 def _run(cmd: List[str]) -> None:
+    """执行 ffmpeg 命令，失败时带完整命令和 stderr 抛错。"""
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg command failed: {' '.join(cmd)}\n{result.stderr}")

@@ -1,3 +1,14 @@
+"""构造一份完整的种子示例数据（世界观、故事圣经、季度弧线、角色、集数、场景、镜头、图像/视频提示词）。
+
+用途：
+1. 校验 schemas.py 里定义的各个 Pydantic 模型（WorldSetting/StoryBible/Character/Scene/Shot/
+   ImagePrompt/VideoPrompt 等）字段设计是否可用、彼此之间的 id 引用关系是否自洽；
+2. 作为脚本直接运行时，把这份手写的示例数据落盘成 JSON 文件，供人工审阅结构化数据的样子，
+   也可以作为下游模块（提示词生成、QC 校验等）开发调试时的参考样例。
+
+这里选取的示例是一部重生复仇题材的竖屏短剧第一集，覆盖了从世界观到具体镜头/台词的完整数据链路。
+"""
+
 from __future__ import annotations
 
 import json
@@ -36,8 +47,10 @@ from schemas import (
     WorldSetting,
 )
 
+# 当前文件所在目录，后面生成的 JSON 种子文件统一写到这个目录下
 HERE = Path(__file__).parent
 
+# 世界观设定：故事发生的虚构都市、主要场景地点、涉及的组织与社会规则
 world = WorldSetting(
     id="world_001",
     name="临江市豪门圈",
@@ -59,6 +72,7 @@ world = WorldSetting(
     tone="都市精英、冷峻、强反转",
 )
 
+# 故事圣经：整部短剧的核心设定——主题、基调、目标受众、主冲突与卖点，串起 12 集的整体走向
 story_bible = StoryBible(
     id="story_001",
     title="重生之豪门逆袭",
@@ -81,6 +95,7 @@ story_bible = StoryBible(
     ],
 )
 
+# 第一季故事弧线：三幕结构，beats 里每一幕对应的 episode_ids 描述了整季的节奏分布
 season_arc = SeasonArc(
     id="season_001",
     season_number=1,
@@ -104,6 +119,7 @@ season_arc = SeasonArc(
     episode_ids=["ep_001", "ep_002", "ep_003", "ep_004", "ep_005", "ep_006", "ep_007", "ep_008", "ep_009", "ep_010", "ep_011", "ep_012"],
 )
 
+# 主要角色列表：主角、男主与四位主要反派/配角的完整人设（外貌、性格、动机、人物关系与弧光）
 characters = [
     Character(
         id="char_su_wanwan",
@@ -224,6 +240,8 @@ characters = [
     ),
 ]
 
+# 第一集的剧集元信息：hook 是开场 3 秒强钩子、cliffhanger 是结尾悬念文案，
+# 两者都是竖屏短剧最关键的留存设计字段
 episode_1 = Episode(
     id="ep_001",
     episode_number=1,
@@ -240,6 +258,8 @@ episode_1 = Episode(
 
 episodes = [episode_1]
 
+# 以下四个全局列表是场景/镜头/提示词的容器，后续通过 add_shot() 等逐步填充，
+# 最后统一收拢进对应的 xxxFile 顶层模型用于序列化输出
 scenes: list[Scene] = []
 shots: list[Shot] = []
 image_prompts: list[ImagePrompt] = []
@@ -247,6 +267,11 @@ video_prompts: list[VideoPrompt] = []
 
 
 def add_shot(scene_id, ep, sc, sh_no, character, location, action, emotion, camera, duration, dialogue_ids=None, notes=""):
+    """构造一个 Shot（镜头）实例，追加进全局 shots 列表，并把该实例返回给调用方。
+
+    把「拼装 shot id（ep/sc/shot 三段编号）+ 填充各字段 + 追加到全局列表」这套重复动作抽成
+    小工具函数，避免下面几十次手写镜头定义时都要重复 id 拼接与默认值（dialogue_ids/notes）逻辑。
+    """
     sh = Shot(
         id=f"shot_{ep:03d}_{sc:02d}_{sh_no:02d}",
         episode=ep,
@@ -615,6 +640,8 @@ scenes.extend([scene1, scene2, scene3, scene4])
 
 IMAGE_STYLE_TAGS = ["cinematic", "vertical 9:16", "short-drama lighting", "photorealistic", "high contrast"]
 
+# 遍历所有已生成的镜头，为每个镜头各自派生一条图像提示词与一条视频提示词（一一对应），
+# 视频提示词通过 image_prompt_id 关联到对应的图像提示词，模拟"先出关键帧图、再基于关键帧生成视频"的生产链路
 for sh in shots:
     chars = "、".join(sh.character)
     img = ImagePrompt(
@@ -647,6 +674,7 @@ for sh in shots:
     )
     video_prompts.append(vid)
 
+# 把各类数据分别装进对应的顶层 xxxFile 模型，对应最终输出的六个 JSON 文件
 story_file = StoryFile(story_bible=story_bible, season_arcs=[season_arc])
 characters_file = CharactersFile(characters=characters)
 scenes_file = ScenesFile(scenes=scenes)
@@ -656,12 +684,20 @@ prompts_file = PromptsFile(image_prompts=image_prompts, video_prompts=video_prom
 
 
 def _dump(model: BaseModelLike, filename: str) -> None:
+    """把一个 Pydantic 模型序列化为 JSON 并写入 HERE 目录下的指定文件。
+
+    统一用 ensure_ascii=False 保留中文原文（不转义成 \\uXXXX），
+    并用 2 空格缩进，方便人工直接打开生成的 JSON 文件审阅种子数据。
+    """
     (HERE / filename).write_text(
         json.dumps(model.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
 
+# 这里把 pydantic 的 BaseModel 重命名导入放在文件末尾（仅用于 _dump 的类型标注），
+# 是因为开启了 `from __future__ import annotations` 后类型标注延迟求值，不会在导入时报错；
+# 放在使用处附近便于理解它只是给 _dump 用的类型别名。noqa: E402 表示这里故意不放在文件顶部。
 from pydantic import BaseModel as BaseModelLike  # noqa: E402
 
 if __name__ == "__main__":

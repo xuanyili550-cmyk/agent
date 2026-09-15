@@ -1,3 +1,25 @@
+"""结构化数据 schema 定义（pydantic 模型 + 枚举）。
+
+这个模块是整个 AI 竖屏短剧生产流水线的"数据契约层"：02_STORY_ENGINE（故事/剧本生成）、
+03 自身（结构化数据校验）、05_TRAINING（训练数据构建）、07_GENERATION（图像/视频/音频生成）、
+08_QC（质检）、13_INFRA 等模块都通过这里定义的模型来读写 JSON 文件、校验 LLM 输出、
+在各阶段之间传递数据。
+
+设计上有两个关键点：
+
+1. 几乎所有模型都用 ``model_config = ConfigDict(extra="forbid")``：LLM 生成的结构化输出
+   经常会"自由发挥"多塞几个字段，如果不禁止多余字段，脏数据会静默混进流水线，等到下游
+   （比如生成视频提示词时）才报错，定位成本很高。所以这里选择"宁可校验失败在最早的
+   阶段暴露问题"，而不是宽松接受。
+2. ``Shot``（分镜镜头）是全系统唯一的关联键：episode/scene/shot 三级编号 + scene_id
+   把剧本、分镜、图像 prompt、视频 prompt、QC 报告全部串联起来，下游各个生成/质检
+   模块都以 shot_id 做关联查找，所以 Shot 的字段设计尽量保持稳定，不轻易变动。
+
+文件末尾还有一段 sys.modules 别名处理，用来解决同一个模块在不同代码路径下被
+以不同名字 import 导致出现"两份类定义"从而让 pydantic 类型校验失败的问题，
+详见该处注释。
+"""
+
 from __future__ import annotations
 
 from enum import Enum
@@ -7,6 +29,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class Genre(str, Enum):
+    """短剧题材/类型标签，用于故事圣经（StoryBible）标注一部剧属于哪些题材。"""
+
     REVENGE = "revenge"
     REBIRTH = "rebirth"
     ROMANCE = "romance"
@@ -17,6 +41,8 @@ class Genre(str, Enum):
 
 
 class CharacterRole(str, Enum):
+    """角色在故事中的功能定位（主角/二番/反派/配角/龙套）。"""
+
     PROTAGONIST = "protagonist"
     DEUTERAGONIST = "deuteragonist"
     ANTAGONIST = "antagonist"
@@ -25,12 +51,16 @@ class CharacterRole(str, Enum):
 
 
 class Gender(str, Enum):
+    """角色性别标签。"""
+
     FEMALE = "female"
     MALE = "male"
     OTHER = "other"
 
 
 class RelationType(str, Enum):
+    """两个角色之间的关系类型（家人/恋人/对手/盟友/敌人/雇佣关系/朋友）。"""
+
     FAMILY = "family"
     ROMANTIC = "romantic"
     RIVAL = "rival"
@@ -42,6 +72,8 @@ class RelationType(str, Enum):
 
 
 class Emotion(str, Enum):
+    """情绪标签，贯穿台词（DialogueLine）、分镜（Shot）等需要标注表演/情绪的地方。"""
+
     ANGER = "anger"
     SADNESS = "sadness"
     JOY = "joy"
@@ -59,6 +91,8 @@ class Emotion(str, Enum):
 
 
 class TimeOfDay(str, Enum):
+    """场景发生的时间段，用于场景（Scene）的时间标注，也影响后续图像/视频的光线风格。"""
+
     DAWN = "dawn"
     MORNING = "morning"
     NOON = "noon"
@@ -69,12 +103,16 @@ class TimeOfDay(str, Enum):
 
 
 class IntExt(str, Enum):
+    """内景/外景/内外景标记（剧本行业惯用的 INT./EXT. 标注）。"""
+
     INT = "int"
     EXT = "ext"
     INT_EXT = "int_ext"
 
 
 class ShotSize(str, Enum):
+    """景别（镜头取景范围），决定分镜画面里人物/环境的相对比例。"""
+
     EXTREME_CLOSE_UP = "extreme_close_up"
     CLOSE_UP = "close_up"
     MEDIUM_CLOSE_UP = "medium_close_up"
@@ -89,6 +127,8 @@ class ShotSize(str, Enum):
 
 
 class CameraAngle(str, Enum):
+    """机位角度（平视/仰拍/俯拍/荷兰角/鸟瞰/正上方）。"""
+
     EYE_LEVEL = "eye_level"
     LOW_ANGLE = "low_angle"
     HIGH_ANGLE = "high_angle"
@@ -98,6 +138,8 @@ class CameraAngle(str, Enum):
 
 
 class CameraMovement(str, Enum):
+    """运镜方式，供 CameraSpec 和 VideoPrompt 描述镜头如何运动。"""
+
     STATIC = "static"
     PAN_LEFT = "pan_left"
     PAN_RIGHT = "pan_right"
@@ -114,6 +156,10 @@ class CameraMovement(str, Enum):
 
 
 class Location(BaseModel):
+    """剧本世界观中的一个具体场地（比如"总裁办公室""老宅祖屋"）。"""
+
+    # extra="forbid"：LLM 生成结构化 JSON 时偶尔会多塞字段（比如多写一个"address"），
+    # 禁止多余字段能让这类脏数据在校验阶段就报错，而不是被悄悄吞掉、下游才出问题。
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -123,6 +169,8 @@ class Location(BaseModel):
 
 
 class WorldSetting(BaseModel):
+    """故事的世界观设定：时代背景、场地列表、组织机构、社会规则等，供全剧共用。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -136,6 +184,8 @@ class WorldSetting(BaseModel):
 
 
 class Relationship(BaseModel):
+    """某个角色与另一个角色之间的单向关系描述，挂在 Character.relationships 下。"""
+
     model_config = ConfigDict(extra="forbid")
 
     character_id: str
@@ -144,6 +194,8 @@ class Relationship(BaseModel):
 
 
 class Character(BaseModel):
+    """完整的角色卡：外貌、性格、背景、动机、人物关系等，供编剧和图像生成环节共同参考。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -163,6 +215,8 @@ class Character(BaseModel):
 
 
 class StoryBeat(BaseModel):
+    """剧情节拍：一幕（act）内的一个关键情节点，可关联到具体集数。"""
+
     model_config = ConfigDict(extra="forbid")
 
     act: str
@@ -171,6 +225,8 @@ class StoryBeat(BaseModel):
 
 
 class SeasonArc(BaseModel):
+    """一季的整体故事弧：核心问题、结局走向，以及由若干 StoryBeat 组成的节拍序列。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -184,6 +240,8 @@ class SeasonArc(BaseModel):
 
 
 class StoryBible(BaseModel):
+    """全剧的"故事圣经"：题材、主题、基调、核心冲突、卖点等顶层创作设定，是整条流水线的起点。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -201,6 +259,8 @@ class StoryBible(BaseModel):
 
 
 class Episode(BaseModel):
+    """单集剧本的元信息。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -218,6 +278,8 @@ class Episode(BaseModel):
 
 
 class DialogueLine(BaseModel):
+    """一句台词，归属于某个分镜（shot_id）和角色，包含中/英文文本与情绪标注。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -233,6 +295,8 @@ class DialogueLine(BaseModel):
 
 
 class Scene(BaseModel):
+    """一场戏：发生在某个地点、某个时间段，包含在场角色和该场戏内的台词列表。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -249,6 +313,8 @@ class Scene(BaseModel):
 
 
 class CameraSpec(BaseModel):
+    """一个镜头的摄影参数：景别、机位角度、运镜方式，供分镜和视频生成环节使用。"""
+
     model_config = ConfigDict(extra="forbid")
 
     shot_size: ShotSize
@@ -258,6 +324,13 @@ class CameraSpec(BaseModel):
 
 
 class Shot(BaseModel):
+    """分镜镜头：全系统唯一的关联键。
+
+    episode/scene/shot 三级编号加上 scene_id，把剧本、图像 prompt、视频 prompt、
+    QC 报告等所有下游产物串联在一起——各生成/质检模块都是以 shot 的 id 做关联查找，
+    因此这个模型的字段一旦确定就应尽量保持稳定，避免牵连整条流水线。
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -276,6 +349,8 @@ class Shot(BaseModel):
 
 
 class Script(BaseModel):
+    """剧本文本文件：某一集的完整台本内容（区别于结构化的 Scene/Shot 数据）。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -288,6 +363,8 @@ class Script(BaseModel):
 
 
 class ImagePrompt(BaseModel):
+    """给某个分镜生成关键帧图像所用的提示词（正向/反向 prompt、风格标签、参考角色等）。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -301,6 +378,8 @@ class ImagePrompt(BaseModel):
 
 
 class VideoPrompt(BaseModel):
+    """给某个分镜生成视频所用的提示词，可关联对应的 ImagePrompt 作为首帧参考。"""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str
@@ -319,6 +398,8 @@ class VideoPrompt(BaseModel):
 
 
 class IssueSeverity(str, Enum):
+    """QC 问题的严重程度，决定是否需要打回重写（BLOCKER 级别必然导致 QCVerdict.passed=False）。"""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -326,6 +407,8 @@ class IssueSeverity(str, Enum):
 
 
 class QCIssue(BaseModel):
+    """质检官发现的单条问题：问题代码、严重程度、出问题的位置、描述与修改建议。"""
+
     model_config = ConfigDict(extra="forbid")
 
     code: str  # 例如 hook_too_slow / character_inconsistent / enum_mismatch / dialogue_off_character
@@ -349,6 +432,8 @@ class QCVerdict(BaseModel):
 
 
 class EditorialDecisionType(str, Enum):
+    """总编审的三种决定类型：approve 通过、revise 需修改后重审、reject 直接拒绝。"""
+
     APPROVE = "approve"
     REVISE = "revise"
     REJECT = "reject"
@@ -369,6 +454,8 @@ class EditorialDecision(BaseModel):
 
 
 class StoryFile(BaseModel):
+    """对应磁盘上"story"文件的顶层结构：故事圣经 + 各季故事弧，用于整体读写与校验。"""
+
     model_config = ConfigDict(extra="forbid")
 
     story_bible: StoryBible
@@ -376,30 +463,40 @@ class StoryFile(BaseModel):
 
 
 class CharactersFile(BaseModel):
+    """对应磁盘上"characters"文件的顶层结构：全部角色列表。"""
+
     model_config = ConfigDict(extra="forbid")
 
     characters: list[Character]
 
 
 class ScenesFile(BaseModel):
+    """对应磁盘上"scenes"文件的顶层结构：全部场景列表。"""
+
     model_config = ConfigDict(extra="forbid")
 
     scenes: list[Scene]
 
 
 class EpisodesFile(BaseModel):
+    """对应磁盘上"episodes"文件的顶层结构：全部分集列表。"""
+
     model_config = ConfigDict(extra="forbid")
 
     episodes: list[Episode]
 
 
 class ShotsFile(BaseModel):
+    """对应磁盘上"shots"文件的顶层结构：全部分镜列表。"""
+
     model_config = ConfigDict(extra="forbid")
 
     shots: list[Shot]
 
 
 class PromptsFile(BaseModel):
+    """对应磁盘上"prompts"文件的顶层结构：全部图像 prompt 与视频 prompt 列表。"""
+
     model_config = ConfigDict(extra="forbid")
 
     image_prompts: list[ImagePrompt]

@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, TypedDict
 
+# 向上找到项目根目录（含 03_STRUCTURED_DATA 的那一层），把 03_STRUCTURED_DATA 和 02_STORY_ENGINE
+# 都加进 sys.path，这样本文件才能用顶层包名 import schemas / agents / generators / planners
 for _p in Path(__file__).resolve().parents:
     if (_p / "03_STRUCTURED_DATA").is_dir():
         sys.path.insert(0, str(_p / "03_STRUCTURED_DATA"))
@@ -54,6 +56,12 @@ PromptMode = Literal["llm", "template"]
 
 
 class DramaState(TypedDict, total=False):
+    """LangGraph 在各节点间流转的共享状态。
+
+    ``total=False``：所有字段都是可选的，因为流水线是逐节点增量填充状态的，
+    早期节点执行时，后面才会出现的字段（如 scenes/shots）还不存在。
+    """
+
     idea: str
     story_bible: sch.StoryBible
     season_arc: sch.SeasonArc
@@ -77,6 +85,12 @@ class DramaState(TypedDict, total=False):
 
 @dataclass
 class AgentBundle:
+    """流水线要用到的所有 agent / planner 实例的容器。
+
+    集中管理便于测试时用假 agent 替换真实实现；qc_officer/chief_editor 允许省略
+    （省略即跳过编审闭环，见 ``_editorial_loop``）。
+    """
+
     story_agent: StoryAgent
     character_agent: CharacterAgent
     episode_agent: EpisodeAgent
@@ -138,18 +152,27 @@ def build_graph(
     episode_numbers: list[int] | None = None,
     prompt_mode: PromptMode = "llm",
 ):
+    """组装并编译完整的 LangGraph 流水线图。
+
+    各节点函数在这里以闭包形式定义（而不是模块级函数），因为它们都要用到
+    bundle / role_hints / episode_numbers / prompt_mode 这几个构图参数：闭包比每个
+    节点都显式传参更省事，也符合 LangGraph 节点签名只接受 state 一个参数的约定。
+    """
     role_hints = ROLE_HINTS[:num_characters]
     episode_numbers = sorted(episode_numbers or [episode_number])
     if prompt_mode == "llm" and bundle.prompt_agent is None:
         raise ValueError("prompt_mode='llm' 需要 bundle.prompt_agent")
 
     def node_story_bible(state: DramaState) -> dict:
+        """流水线第一个节点：根据创意生成故事圣经（世界观、主线设定）。"""
         return {"story_bible": bundle.story_agent.generate_story_bible(state["idea"])}
 
     def node_season_arc(state: DramaState) -> dict:
+        """基于故事圣经规划季度弧线（章节/节拍规划）。"""
         return {"season_arc": bundle.season_planner.plan(state["story_bible"])}
 
     def node_characters(state: DramaState) -> dict:
+        """按角色提示词逐个生成角色，再以实际生成结果回写 story_bible 的角色 id，保证前后一致。"""
         characters = [bundle.character_agent.generate_character(state["story_bible"], hint) for hint in role_hints]
         # 交叉校验：以实际生成的角色为准回写 bible.character_ids
         story_bible = reconcile_story_bible(state["story_bible"], characters)
@@ -170,6 +193,7 @@ def build_graph(
         return {"episodes": episodes, "scripts": scripts, "episode": episodes[-1], "script": scripts[-1], "episode_number": episode_numbers[-1]}
 
     def node_storyboard(state: DramaState) -> dict:
+        """对每集出分镜并跑编审闭环：剧本被改写过的集要按新剧本重新出分镜，编审不通过的集不进后续硬校验与统计。"""
         scenes: list[sch.Scene] = []
         shots: list[sch.Shot] = []
         editorial: dict[str, dict] = {}
@@ -202,6 +226,7 @@ def build_graph(
         }
 
     def node_prompts(state: DramaState) -> dict:
+        """给每个镜头生成图像/视频提示词：template 模式走零成本 jinja 模板，llm 模式走 PromptAgent（质量高、费 token）。"""
         image_prompts: list[sch.ImagePrompt] = []
         video_prompts: list[sch.VideoPrompt] = []
         for shot in state["shots"]:
@@ -235,6 +260,7 @@ def build_graph(
 
 
 def _storyboard_episode(bundle: AgentBundle, episode: sch.Episode, script: sch.Script, num_scenes: int) -> tuple[list[sch.Scene], list[sch.Shot]]:
+    """给单集生成场景与镜头：逐场景生成场景本身、镜头列表、对白，再把对白 id 回填进对应镜头的 dialogue_ids。"""
     scenes: list[sch.Scene] = []
     shots: list[sch.Shot] = []
     for scene_number in range(1, num_scenes + 1):
@@ -244,6 +270,7 @@ def _storyboard_episode(bundle: AgentBundle, episode: sch.Episode, script: sch.S
         dialogue_by_shot: dict[str, list[str]] = {}
         for line in dialogue:
             dialogue_by_shot.setdefault(line.shot_id, []).append(line.id)
+        # 按 shot_id 把对白 id 分组，再回填到对应镜头；model_copy 避免直接改 agent 返回的对象
         scene_shots = [sh.model_copy(update={"dialogue_ids": dialogue_by_shot.get(sh.id, [])}) for sh in scene_shots]
         scene = scene.model_copy(update={"shot_ids": [sh.id for sh in scene_shots], "dialogue": dialogue, "episode_id": episode.id})
         scenes.append(scene)

@@ -22,17 +22,25 @@ pytestmark = pytest.mark.skipif(subprocess.run(["which", "ffmpeg"], capture_outp
 
 @pytest.fixture(scope="module")
 def client(api_headers):
+    """整模块共用一个带鉴权头的 TestClient，避免每条用例都重新拉起 FastAPI app。"""
     with TestClient(main_mod.app, headers=api_headers) as c:
         yield c
 
 
 def _project(client) -> str:
+    """建一个测试用项目，返回其 project_id，供各用例复用。"""
     resp = client.post("/projects", json={"name": "e2e", "description": "端到端测试"})
     assert resp.status_code == 201, resp.text
     return resp.json()["project_id"]
 
 
 def test_full_pipeline_with_human_review(client, tmp_root):
+    """核心端到端用例：验证"人工审核是硬关卡"这条设计约束——
+
+    故事阶段跑完后流水线必须停在 awaiting_review，只有显式 approve 过的集才会继续生产/渲染/
+    发布，未批准的集（ep2）状态原地不动。同时核对数据库里落的是 03 schema 的强类型对象、
+    LLM 调用有计费记录、成片分辨率与时长和 manifest/发布记录都符合预期。
+    """
     project_id = _project(client)
     resp = client.post(
         "/pipelines/episodes",
@@ -113,6 +121,8 @@ def test_full_pipeline_with_human_review(client, tmp_root):
 
 
 def test_pipeline_without_human_review_runs_straight_through(client, monkeypatch):
+    """验证 require_human_review=False 时流水线一路跑到 done，不在 awaiting_review 停留；
+    同时用 editorial=False 走"跳过编审"分支，确认 editorial 结果标成 skipped 而不是伪造一个通过结果。"""
     settings = config.get_settings()
     monkeypatch.setattr(settings, "require_human_review", False)
     project_id = _project(client)
@@ -137,6 +147,8 @@ def test_pipeline_without_human_review_runs_straight_through(client, monkeypatch
 
 
 def test_reject_and_missing_project(client):
+    """覆盖几条边界路径：reject 后流水线状态置为 rejected；project_id/run_id 不存在时接口返回 404
+    而不是抛异常；按 status 过滤 /pipelines 列表能查到被拒的运行。"""
     project_id = _project(client)
     resp = client.post("/pipelines/episodes", json={"project_id": project_id, "idea": "重生复仇", "num_characters": 3, "num_scenes": 1})
     run_id = resp.json()["run_id"]

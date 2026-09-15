@@ -22,9 +22,12 @@ from .memory import ConversationMemory
 
 
 class ChiefEditorAgent(BaseAgent):
+    """汇总质检官报告，对一集剧本给出 approve / revise / reject 的最终编审决定。"""
+
     SYSTEM_PROMPT_FILE = PROMPTS_DIR / "chief_editor_agent_system.txt"
 
     def __init__(self, provider: LLMProvider, max_retries: int = 3, memory: ConversationMemory | None = None):
+        """直接复用 BaseAgent 的初始化，加载本 agent 专属的系统提示词文件。"""
         super().__init__(provider, self.SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"), max_retries=max_retries, memory=memory)
 
     def decide(
@@ -36,6 +39,7 @@ class ChiefEditorAgent(BaseAgent):
         qc_verdict: sch.QCVerdict,
         revision_round: int = 0,
     ) -> sch.EditorialDecision:
+        """结合 Story Bible、季线、剧本正文和质检报告生成编审决定，并对 blocker 做强制兜底。"""
         beat = next((b for b in season_arc.beats if episode.id in b.episode_ids), None)
         issues = "\n".join(f"- [{i.severity.value}] {i.code} @ {i.location}: {i.description}（建议：{i.suggestion}）" for i in qc_verdict.issues) or "（无）"
         user_prompt = (
@@ -49,6 +53,7 @@ class ChiefEditorAgent(BaseAgent):
         decision = self.generate(user_prompt, sch.EditorialDecision)
         has_blocker = any(i.severity == sch.IssueSeverity.BLOCKER for i in qc_verdict.issues)
         if has_blocker and decision.decision == sch.EditorialDecisionType.APPROVE:
+            # 代码层面强制兜底：质检报告有 blocker 时不允许通过，不能只靠 prompt 指令约束模型
             decision = decision.model_copy(
                 update={
                     "decision": sch.EditorialDecisionType.REVISE,

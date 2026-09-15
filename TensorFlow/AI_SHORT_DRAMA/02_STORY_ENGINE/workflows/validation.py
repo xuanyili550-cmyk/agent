@@ -11,6 +11,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# 向上找到项目根目录（含 03_STRUCTURED_DATA 的那一层），把 03_STRUCTURED_DATA 和 02_STORY_ENGINE
+# 都加进 sys.path，这样本文件才能用顶层包名 import schemas
 for _p in Path(__file__).resolve().parents:
     if (_p / "03_STRUCTURED_DATA").is_dir():
         sys.path.insert(0, str(_p / "03_STRUCTURED_DATA"))
@@ -21,6 +23,8 @@ import schemas as sch
 
 
 class DramaConsistencyError(ValueError):
+    """流水线交叉校验失败时抛出的异常，代表各 agent 输出之间存在无法自愈的不一致（需终止本集处理）。"""
+
     pass
 
 
@@ -32,6 +36,7 @@ def reconcile_story_bible(story_bible: sch.StoryBible, characters: list[sch.Char
     """
     ids = [c.id for c in characters]
     if len(set(ids)) != len(ids):
+        # 角色 id 重复说明 CharacterAgent 生成有问题，属于不可自愈的错误，直接终止
         dupes = sorted({i for i in ids if ids.count(i) > 1})
         raise DramaConsistencyError(f"角色 id 重复：{dupes}")
     id_set = set(ids)
@@ -74,7 +79,9 @@ def validate_episode_assets(
         if shot.episode != episode.episode_number:
             problems.append(f"{shot.id}.episode={shot.episode} != {episode.episode_number}")
     if len(shot_ids) != len(shots):
+        # 直接比较去重前后的数量，比逐个查重复 id 更省事
         problems.append("镜头 id 重复")
 
     if problems:
+        # 一次性抛出所有问题（最多截取前 20 条），方便一次排查完，而不是改一个报一个
         raise DramaConsistencyError(f"{episode.id} 交叉校验失败：" + "；".join(problems[:20]))

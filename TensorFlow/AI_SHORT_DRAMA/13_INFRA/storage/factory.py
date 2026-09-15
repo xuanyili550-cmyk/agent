@@ -1,3 +1,8 @@
+"""存储后端工厂：按环境变量 ``STORAGE_BACKEND`` 决定用本地磁盘还是 S3。
+
+业务代码统一调 ``get_storage()`` 拿适配器，部署时只改环境变量就能切换后端，不动代码。
+"""
+
 from __future__ import annotations
 
 import os
@@ -8,12 +13,13 @@ from .s3 import S3StorageAdapter
 
 
 def get_storage() -> StorageAdapter:
-    """Picks a storage backend from env vars.
+    """根据环境变量选择存储后端。
 
-    STORAGE_BACKEND=local (default): LocalStorageAdapter rooted at STORAGE_LOCAL_ROOT
-    (default "./storage_data").
-    STORAGE_BACKEND=s3: S3StorageAdapter reading STORAGE_BUCKET, STORAGE_ENDPOINT_URL,
-    STORAGE_ACCESS_KEY, STORAGE_SECRET_KEY, STORAGE_REGION.
+    STORAGE_BACKEND=local（默认）：LocalStorageAdapter，根目录取 STORAGE_LOCAL_ROOT（默认 "./storage_data"）。
+    STORAGE_BACKEND=s3：S3StorageAdapter，读取 STORAGE_BUCKET、STORAGE_ENDPOINT_URL、
+    STORAGE_ACCESS_KEY、STORAGE_SECRET_KEY、STORAGE_REGION。
+
+    s3 模式下 STORAGE_BUCKET 缺失直接抛错而不是给默认值：bucket 配错会把成片写到不该去的地方，必须显式配置。
     """
     backend = os.environ.get("STORAGE_BACKEND", "local").lower()
     if backend == "local":

@@ -12,6 +12,9 @@
 
 QC 后端：settings.qc_backend="clip" 用 08_QC 的 CLIP 角色一致性打分（需要参考图）；
 "none" 跳过打分直接 approved（开发/无权重环境）。
+
+在流水线里的位置：story_task（剧本落库）-> 人工审核 -> chord(**shot_task** × 每个镜头) -> render_task。
+``produce_shot`` 是不依赖 Celery 的纯函数版本，生成器 / 打分器 / 改写器都可注入，测试直接调它。
 """
 
 from __future__ import annotations
@@ -59,6 +62,7 @@ def resolve_character_assets(character_ids: list[str], db=None, project_id: str 
             row = (db.get(Character, repo.scoped_id(project_id, cid)) if project_id else None) or db.get(Character, cid)
         entry = registry.get(cid, {})
         ref = row.reference_image_path if row and row.reference_image_path else None
+        # 路径都要检查存在：数据库里的路径可能来自另一台机器，不存在就退回本地登记表
         if ref and Path(ref).exists():
             refs.append(ref)
         else:
@@ -70,6 +74,7 @@ def resolve_character_assets(character_ids: list[str], db=None, project_id: str 
             lora_candidate = (row.lora_path if row and row.lora_path else None) or entry.get("lora_path")
             if lora_candidate and Path(lora_candidate).exists():
                 lora = lora_candidate
+        # trigger word 是训练 LoRA 时绑定的触发词，要拼进 prompt 开头 LoRA 才生效
         if entry.get("trigger_word"):
             triggers.append(entry["trigger_word"])
     return {"reference_images": refs, "lora_path": lora, "trigger_words": triggers}
@@ -81,6 +86,7 @@ def resolve_character_assets(character_ids: list[str], db=None, project_id: str 
 def score_asset(settings: Settings, *, generated_image: str, reference_images: list[str], shot_id: str, asset_id: str, character_id: str | None):
     """返回 08_QC 的 QCReport。clip 后端需要至少一张参考图，否则只做"文件存在"级检查。"""
     qc = mod("08_QC.reports.qc_report")
+    # 镜头阶段只有关键帧，视频/音频还没生成，不能把它们列为必需项
     thresholds = qc.QCThresholds(character_min_similarity=settings.qc_character_min_similarity, video_required=False, audio_required=False)
     if settings.qc_backend == "clip" and reference_images:
         checker_mod = mod("08_QC.character.consistency_checker")
@@ -105,6 +111,7 @@ def rule_based_rewrite(prompt: str, reasons: list[str]) -> str:
 
 def make_prompt_rewriter(settings: Settings, image_prompt_data: dict[str, Any] | None) -> Callable[[str, list[str], int], str]:
     """返回 (prompt, reasons, attempt) -> new_prompt。有 LLM 就用 PromptAgent，没有就规则改写。"""
+    # mock provider 不会真的改写；没有完整 ImagePrompt 对象也没法喂给 PromptAgent，两种情况都走规则
     if settings.llm_provider == "mock" or image_prompt_data is None:
         return lambda prompt, reasons, attempt: rule_based_rewrite(prompt, reasons)
     sch = mod("03_STRUCTURED_DATA.schemas")
@@ -113,6 +120,8 @@ def make_prompt_rewriter(settings: Settings, image_prompt_data: dict[str, Any] |
     agent = agents.PromptAgent(provider)
 
     def rewrite(prompt: str, reasons: list[str], attempt: int) -> str:
+        """用 PromptAgent 按 QC 不通过的原因改写提示词；把当前 prompt 塞回完整 ImagePrompt 对象再交给 agent，
+        这样 agent 能看到镜头的景别/角色等上下文而不只是一句文本。"""
         current = sch.ImagePrompt.model_validate({**image_prompt_data, "prompt_text": prompt})
         try:
             return agent.rewrite_image_prompt(current, reasons, attempt).prompt_text
@@ -139,6 +148,9 @@ def produce_shot(
     payload: {"shot_id", "prompt", "negative_prompt", "reference_character_ids", "character_id",
       "episode_id", "seed", "output_dir", "run_id", "image_prompt": dict | None,
       "model": str | None, "license": str | None}
+
+    generator / scorer / rewriter 三个依赖都可注入（测试用 Dummy 生成器 + 预设判定序列），
+    不传就按 settings 构造真实实现。返回值里 ``attempts`` 是每次尝试的完整记录，``status`` 只有 approved / failed。
     """
     settings = settings or get_settings()
     errors_mod = mod("07_GENERATION.errors")
@@ -147,6 +159,7 @@ def produce_shot(
     asset_registry = mod("07_GENERATION.asset_registry")
 
     shot_id = payload["shot_id"]
+    # shot_id 是数据库主键（带项目前缀），business_shot_id 是给文件名/日志用的业务 id
     business_shot_id = payload.get("business_shot_id") or shot_id
     prompt = payload["prompt"]
     negative = payload.get("negative_prompt")
@@ -167,6 +180,7 @@ def produce_shot(
     if assets["trigger_words"]:
         prompt = ", ".join(assets["trigger_words"]) + ", " + prompt
 
+    # max_attempts 至少 2：qc_max_attempts=0 时也要保证"初次 + 一次重试"，阶梯才有意义
     ladder = ladder_mod.RetryLadder(resolution_ladder=[tuple(x) for x in settings.retry_resolution_ladder], max_attempts=max(2, settings.qc_max_attempts + 1))
     plan = ladder.first_attempt()
     seed = payload.get("seed") if payload.get("seed") is not None else random.randrange(2**31)
@@ -191,6 +205,7 @@ def produce_shot(
                 lora_path=assets["lora_path"],
                 reference_images=assets["reference_images"] or None,
             )
+        # 三类生成错误映射到阶梯的三种失败原因，阶梯据此决定下一级（瞬时->同参数，被拒->改写，资源->降分辨率）
         except errors_mod.TransientProviderError as exc:
             failure, reasons = ladder_mod.FailureKind.TRANSIENT, [str(exc)]
         except errors_mod.GenerationRejectedError as exc:
@@ -200,6 +215,7 @@ def produce_shot(
 
         if failure is None:
             asset_id = asset_registry.new_asset_id("img")
+            # 每次尝试单独存文件（_a1/_a2...），不覆盖：不通过的图也要留着复盘
             file_path = output_dir / f"{business_shot_id}_a{plan.attempt}.png"
             image.save(file_path)
             record = asset_registry.AssetRecord(
@@ -245,6 +261,7 @@ def produce_shot(
             attempts_log.append({**plan.__dict__, "level": plan.level.value, "error": reasons[0][:200] if reasons else ""})
 
         log.info("镜头生成未通过，进入重试阶梯", extra={"shot_id": shot_id, "attempt": plan.attempt, "failure": failure.value, "reasons": reasons[:2]})
+        # 阶梯用尽时 next_attempt 返回 None，循环结束
         plan = ladder.next_attempt(failure, reason="; ".join(reasons)[:300])
 
     with session_scope() as db:
@@ -266,4 +283,6 @@ def produce_shot(
 
 @celery_app.task(name="shot_task", bind=True)
 def shot_task(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Celery 入口：直接委托给 produce_shot，用 settings 默认的生成器/打分器/改写器。
+    不抛业务异常（失败也返回 status=failed），见模块 docstring 第 3 点。"""
     return produce_shot(payload)

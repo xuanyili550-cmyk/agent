@@ -102,14 +102,17 @@ class ConversationStore(ABC):
 
     @abstractmethod
     def load(self, context_id: str) -> dict | None:
+        """读取一个会话的状态 dict；不存在返回 None。"""
         raise NotImplementedError
 
     @abstractmethod
     def save(self, context_id: str, state: dict) -> None:
+        """整份覆盖写入一个会话的状态。"""
         raise NotImplementedError
 
     @abstractmethod
     def delete(self, context_id: str) -> None:
+        """删除一个会话。"""
         raise NotImplementedError
 
     @abstractmethod
@@ -122,25 +125,30 @@ class InMemoryConversationStore(ConversationStore):
     """进程内字典。只适合单元测试和单进程 demo，进程退出即丢。"""
 
     def __init__(self) -> None:
+        """一把全局锁保护字典，每个 context_id 再各一把锁模拟跨进程互斥。"""
         self._data: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._context_locks: dict[str, threading.Lock] = {}
 
     def load(self, context_id: str) -> dict | None:
+        """返回深拷贝，防止调用方改到存储里的对象。"""
         with self._lock:
             state = self._data.get(context_id)
             return json.loads(json.dumps(state)) if state is not None else None
 
     def save(self, context_id: str, state: dict) -> None:
+        """存深拷贝。"""
         with self._lock:
             self._data[context_id] = json.loads(json.dumps(state))
 
     def delete(self, context_id: str) -> None:
+        """删除会话。"""
         with self._lock:
             self._data.pop(context_id, None)
 
     @contextmanager
     def lock(self, context_id: str, timeout: float) -> Iterator[None]:
+        """按 context_id 取线程锁；超时抛 ConversationLockTimeout。"""
         with self._lock:
             ctx_lock = self._context_locks.setdefault(context_id, threading.Lock())
         if not ctx_lock.acquire(timeout=timeout):
@@ -158,21 +166,25 @@ class FileConversationStore(ConversationStore):
     """
 
     def __init__(self, root: str | Path) -> None:
+        """``root``：存放 <context_id>.json 的目录，不存在会创建。"""
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
 
     def _path(self, context_id: str) -> Path:
+        """context_id 里的非法字符替换成下划线，得到安全的文件名。"""
         safe = re.sub(r"[^A-Za-z0-9_.\-]", "_", context_id)
         return self.root / f"{safe}.json"
 
     def load(self, context_id: str) -> dict | None:
+        """读 JSON 文件；不存在返回 None。"""
         path = self._path(context_id)
         if not path.exists():
             return None
         return json.loads(path.read_text(encoding="utf-8"))
 
     def save(self, context_id: str, state: dict) -> None:
+        """先写临时文件再原子改名，避免半截 JSON。"""
         path = self._path(context_id)
         tmp = path.with_suffix(".json.tmp")
         with self._lock:
@@ -181,11 +193,13 @@ class FileConversationStore(ConversationStore):
             tmp.replace(path)
 
     def delete(self, context_id: str) -> None:
+        """删除会话文件和锁文件。"""
         self._path(context_id).unlink(missing_ok=True)
         self._path(context_id).with_suffix(".lock").unlink(missing_ok=True)
 
     @contextmanager
     def lock(self, context_id: str, timeout: float) -> Iterator[None]:
+        """flock 独占锁文件，非阻塞轮询直到拿到或超时。"""
         import fcntl
 
         lock_path = self._path(context_id).with_suffix(".lock")
@@ -220,6 +234,7 @@ class RedisConversationStore(ConversationStore):
         key_prefix: str = "llm:context:",
         lock_ttl_seconds: int = 900,
     ) -> None:
+        """``url``：redis 连接串；``ttl_seconds``：None 永不过期；``lock_ttl_seconds``：锁的兜底过期。"""
         import redis  # 延迟 import：没装 redis 的开发环境用文件存储也能跑
 
         self._client = redis.Redis.from_url(url)
@@ -228,13 +243,16 @@ class RedisConversationStore(ConversationStore):
         self.lock_ttl_seconds = lock_ttl_seconds
 
     def _key(self, context_id: str) -> str:
+        """加前缀后的 Redis key。"""
         return f"{self.key_prefix}{context_id}"
 
     def load(self, context_id: str) -> dict | None:
+        """GET 并反序列化；不存在返回 None。"""
         raw = self._client.get(self._key(context_id))
         return json.loads(raw) if raw else None
 
     def save(self, context_id: str, state: dict) -> None:
+        """SET（可带过期时间）。"""
         payload = json.dumps(state, ensure_ascii=False)
         if self.ttl_seconds:
             self._client.set(self._key(context_id), payload, ex=self.ttl_seconds)
@@ -242,10 +260,12 @@ class RedisConversationStore(ConversationStore):
             self._client.set(self._key(context_id), payload)
 
     def delete(self, context_id: str) -> None:
+        """DEL 删除会话键。"""
         self._client.delete(self._key(context_id))
 
     @contextmanager
     def lock(self, context_id: str, timeout: float) -> Iterator[None]:
+        """redis-py 的分布式锁：SET NX + 过期时间。"""
         lock = self._client.lock(f"{self._key(context_id)}:lock", timeout=self.lock_ttl_seconds, blocking_timeout=timeout)
         if not lock.acquire():
             raise ConversationLockTimeout(f"会话 {context_id} 的 Redis 锁被占用超过 {timeout}s")
@@ -256,6 +276,115 @@ class RedisConversationStore(ConversationStore):
                 lock.release()
             except Exception:  # 锁已因 TTL 过期被释放：不算错误
                 pass
+
+
+class SQLiteConversationStore(ConversationStore):
+    """SQLite 存储：单机部署的"持久化 + 可查询"方案（《Agent 搭建指南》里的 ``storage="sqlite"``）。
+
+    和文件存储相比，所有会话在一张表里，能用 SQL 直接查"哪些会话最近更新过 / 总共多少轮"；
+    和 Redis 相比不需要额外服务，Python 自带。多机器仍然要换 Redis。
+
+    锁的实现：单独一张 ``locks`` 表，``INSERT`` 主键冲突即"别人持有锁"；每把锁带 ``expires_at``，
+    worker 崩溃后锁会在 ``lock_ttl_seconds`` 后自动失效，不会把会话永久锁死。
+    不用"长事务 + BEGIN IMMEDIATE"当锁，因为那样在等待 LLM 回复的几十秒里整个库都写不了。
+    """
+
+    def __init__(self, path: str | Path, lock_ttl_seconds: int = 900) -> None:
+        """``path``：数据库文件路径（父目录不存在会自动创建）；``":memory:"`` 仅限单进程测试。"""
+        self.path = str(path)
+        self.lock_ttl_seconds = lock_ttl_seconds
+        if self.path != ":memory:":
+            Path(self.path).parent.mkdir(parents=True, exist_ok=True)
+        self._memory_conn = None  # :memory: 库每个连接都是独立的空库，必须复用同一个连接
+        with self._connect() as conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS conversations (context_id TEXT PRIMARY KEY, state TEXT NOT NULL, updated_at REAL NOT NULL)")
+            conn.execute("CREATE TABLE IF NOT EXISTS locks (context_id TEXT PRIMARY KEY, owner TEXT NOT NULL, expires_at REAL NOT NULL)")
+
+    def _connect(self):
+        """每次操作开一个短连接（WAL 模式允许读写并发）；:memory: 时复用同一个连接。"""
+        import sqlite3
+
+        if self.path == ":memory:":
+            if self._memory_conn is None:
+                self._memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
+            return _NonClosing(self._memory_conn)
+        conn = sqlite3.connect(self.path, timeout=30.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        return conn
+
+    def load(self, context_id: str) -> dict | None:
+        """读一个会话的完整状态。"""
+        with self._connect() as conn:
+            row = conn.execute("SELECT state FROM conversations WHERE context_id = ?", (context_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save(self, context_id: str, state: dict) -> None:
+        """整份覆盖写入（UPSERT）。"""
+        payload = json.dumps(state, ensure_ascii=False)
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO conversations (context_id, state, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(context_id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at",
+                (context_id, payload, time.time()),
+            )
+
+    def delete(self, context_id: str) -> None:
+        """删除会话及其锁。"""
+        with self._connect() as conn:
+            conn.execute("DELETE FROM conversations WHERE context_id = ?", (context_id,))
+            conn.execute("DELETE FROM locks WHERE context_id = ?", (context_id,))
+
+    def list_contexts(self) -> list[tuple[str, float]]:
+        """(context_id, updated_at) 列表，按最近更新排序——文件/Redis 存储没有这个便利。"""
+        with self._connect() as conn:
+            return [tuple(r) for r in conn.execute("SELECT context_id, updated_at FROM conversations ORDER BY updated_at DESC").fetchall()]
+
+    @contextmanager
+    def lock(self, context_id: str, timeout: float) -> Iterator[None]:
+        """基于 locks 表的互斥锁：拿不到就每 50ms 重试，超时抛 ConversationLockTimeout。"""
+        import sqlite3
+        import uuid
+
+        owner = uuid.uuid4().hex
+        deadline = time.monotonic() + timeout
+        while True:
+            now = time.time()
+            with self._connect() as conn:
+                conn.execute("DELETE FROM locks WHERE context_id = ? AND expires_at < ?", (context_id, now))  # 清掉过期锁
+                try:
+                    conn.execute("INSERT INTO locks (context_id, owner, expires_at) VALUES (?, ?, ?)", (context_id, owner, now + self.lock_ttl_seconds))
+                    acquired = True
+                except sqlite3.IntegrityError:  # 主键冲突 = 别人持有
+                    acquired = False
+            if acquired:
+                break
+            if time.monotonic() >= deadline:
+                raise ConversationLockTimeout(f"会话 {context_id} 的 SQLite 锁被占用超过 {timeout}s")
+            time.sleep(0.05)
+        try:
+            yield
+        finally:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM locks WHERE context_id = ? AND owner = ?", (context_id, owner))
+
+
+class _NonClosing:
+    """把一个长期连接包成"with 退出时只 commit 不 close"的对象，给 :memory: 库用。"""
+
+    def __init__(self, conn) -> None:
+        """包住 conn。"""
+        self._conn = conn
+
+    def __enter__(self):
+        """返回真正的连接。"""
+        return self._conn
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        """正常退出提交，异常回滚；不关闭连接。"""
+        if exc_type is None:
+            self._conn.commit()
+        else:
+            self._conn.rollback()
 
 
 # --------------------------------------------------------------------------------------
@@ -292,6 +421,7 @@ class ConversationMemory:
         summarizer: Summarizer | None = None,
         lock_timeout: float = 300.0,
     ) -> None:
+        """构造后立即 load()：对象一创建就带着已持久化的历史。"""
         if compaction == "summarize" and summarizer is None:
             raise ValueError("compaction='summarize' 需要同时传 summarizer")
         self.context_id = context_id
@@ -313,6 +443,7 @@ class ConversationMemory:
     # ---- 持久化 ----------------------------------------------------------------------
 
     def load(self) -> None:
+        """从 store 重新加载消息、摘要和时间戳。"""
         state = self.store.load(self.context_id)
         if not state:
             return
@@ -323,6 +454,7 @@ class ConversationMemory:
         self.updated_at = float(state.get("updated_at", self.updated_at))
 
     def save(self) -> None:
+        """把当前消息、摘要、summarized_upto 落盘。"""
         self.updated_at = time.time()
         self.store.save(
             self.context_id,
@@ -337,6 +469,7 @@ class ConversationMemory:
         )
 
     def clear(self) -> None:
+        """清空内存里的历史并删掉存储。"""
         self.messages = []
         self.summary = ""
         self.summarized_upto = 0
@@ -375,12 +508,15 @@ class ConversationMemory:
 
     @property
     def turn_count(self) -> int:
+        """已记录的完整轮次数（一轮 = user + assistant）。"""
         return len(self.messages) // 2
 
     def _tokens_of(self, messages: list[Message]) -> int:
+        """一组消息的 token 总数。"""
         return sum(self.token_counter(m["content"]) for m in messages)
 
     def _summary_messages(self) -> list[Message]:
+        """把摘要包装成一轮「用户给前情 -> 助手确认」的消息，放在窗口最前面。"""
         if not self.summary:
             return []
         return [
@@ -389,6 +525,7 @@ class ConversationMemory:
         ]
 
     def budget_for(self, system_prompt: str, user_prompt: str) -> int:
+        """本次请求留给历史消息的 token 预算。"""
         return self.max_context_tokens - self.reserve_tokens - self.token_counter(system_prompt) - self.token_counter(user_prompt)
 
     def window(self, system_prompt: str = "", user_prompt: str = "") -> list[Message]:

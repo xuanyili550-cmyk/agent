@@ -3,6 +3,8 @@
 请求头 ``X-API-Key`` 必须在 settings.api_keys 里（常量时间比较，防时序攻击）。
 API_KEYS 没配置时受保护接口返回 503 而不是放行——"忘了配鉴权"在生产上应该是显性故障，
 不能静默变成裸奔。/health 和 /metrics 不受保护（探针和 Prometheus 抓取用）。
+
+用法：在 ``APIRouter(dependencies=[Depends(require_api_key)])`` 里挂上，整组路由自动受保护。
 """
 
 from __future__ import annotations
@@ -14,14 +16,25 @@ from fastapi.security import APIKeyHeader
 
 from ..config import get_settings
 
+# auto_error=False：header 缺失时不让 FastAPI 自动抛 403，由 require_api_key 统一决定返回 503 还是 401
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def _matches(candidate: str, keys: list[str]) -> bool:
+    """判断请求带来的 key 是否在白名单里。
+
+    用 ``hmac.compare_digest`` 而不是 ``==``：普通字符串比较遇到第一个不同字符就返回，
+    攻击者可以通过响应时间差逐字符猜 key；常量时间比较把这条侧信道堵掉。
+    """
     return any(hmac.compare_digest(candidate.encode(), k.encode()) for k in keys)
 
 
 def require_api_key(request: Request, api_key: str | None = Depends(api_key_header)) -> str:
+    """FastAPI 依赖：校验 ``X-API-Key``，通过后把 key 挂到 ``request.state`` 供限流/日志按 key 区分调用方。
+
+    - 服务端没配 API_KEYS -> 503：宁可让接口不可用，也不能因为漏配就把整个平台裸露出去。
+    - 没带 key 或 key 不匹配 -> 401。
+    """
     settings = get_settings()
     if not settings.api_keys:
         raise HTTPException(status_code=503, detail="API_KEYS 未配置，受保护接口不可用")
