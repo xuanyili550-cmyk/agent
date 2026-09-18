@@ -520,7 +520,7 @@ training_args = Seq2SeqTrainingArguments(
     gradient_checkpointing=True,
     fp16=True,
     fp16_full_eval=True,
-    evaluation_strategy="steps",
+    eval_strategy="steps",  # 修复:transformers v5 把 evaluation_strategy 改名为 eval_strategy
     per_device_eval_batch_size=16,
     predict_with_generate=True,
     generation_max_length=225,
@@ -543,7 +543,7 @@ trainer = Seq2SeqTrainer(
     eval_dataset=common_voice["test"],
     data_collator=data_collator,
     compute_metrics=compute_metrics,
-    tokenizer=processor,
+    processing_class=processor,  # 修复:transformers v5 用 processing_class 取代了 tokenizer 参数
 )
 
 trainer.train()

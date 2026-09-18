@@ -50,8 +50,9 @@ def hallucination_rate(rows):
     halluc = 0
     for r in rows:
         core = r["answer"].replace(" ", "")
-        # 逐字符窗口找有没有一段(>=2字)在 context 里；都不在 → 判为无据/幻觉
-        supported = any(core[i:i + 2] in r["context"] for i in range(max(1, len(core) - 1)))
+        # 答案整体是否为 context 的子串(都去空格)；不是 → 无据/幻觉。
+        # 注意:不能用"任意 2 字窗口命中"那种松判据——"保修三年"里"保修"也在"保修一年"中会被误判有据。
+        supported = core in r["context"].replace(" ", "")
         if not supported:
             halluc += 1
     return halluc / len(rows)
@@ -65,9 +66,8 @@ def judge(q: str, answer: str, reference: str, context: str) -> int:
     score = 5
     if reference not in answer:
         score -= 2                                     # 没命中参考
-    core = answer.replace(" ", "")
-    if not any(core[i:i + 2] in context for i in range(max(1, len(core) - 1))):
-        score -= 3                                     # 无据(幻觉)重扣
+    if answer.replace(" ", "") not in context.replace(" ", ""):
+        score -= 3                                     # 无据(幻觉)重扣:答案整体不在 context
     return max(0, score)
 
 

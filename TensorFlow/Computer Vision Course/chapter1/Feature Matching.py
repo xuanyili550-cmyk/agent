@@ -52,7 +52,7 @@ img3 = cv2.drawMatches(
     kp1,
     img2,
     kp2,
-    matches[:n],
+    matches[:10],  # 修复:原为 matches[:n],n 是上文 KNN 循环遗留的 DMatch 对象,切片会 TypeError;这里画前 10 个最佳匹配
     None,
     flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
 )

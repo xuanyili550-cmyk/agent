@@ -48,6 +48,7 @@ async def get_agent():
         except Exception as e:
             print(f"❌ Error creating/loading agent: {str(e)}")
             agent_instance = None
+    return agent_instance                # 修复:原缺 return,导致调用方 await get_agent() 恒为 None
 
 
 # 智能体如何使用工具的示例

@@ -139,4 +139,4 @@ if __name__ == "__main__":
     main()
     if len(sys.argv) > 1 and sys.argv[1] == "grpo":
         # print("\n跑 GRPO 小段：")
-        os.system(f"{sys.executable} ../案例4_GRPO强化学习.py --steps 6 --group 3")
+        os.system(f"{sys.executable} ../案例/案例4_GRPO强化学习.py --steps 6 --group 3")  # 修复:原缺 案例/ 一层,指向了不存在的文件

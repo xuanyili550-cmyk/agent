@@ -81,13 +81,13 @@ demo = gr.Blocks()
 
 mic_translate = gr.Interface(
     fn=speech_to_speech_translation,
-    inputs=gr.Audio(source="microphone", type="filepath"),
+    inputs=gr.Audio(sources="microphone", type="filepath"),  # 修复:Gradio 4+ 参数 source→sources
     outputs=gr.Audio(label="Generated Speech", type="numpy"),
 )
 
 file_translate = gr.Interface(
     fn=speech_to_speech_translation,
-    inputs=gr.Audio(source="upload", type="filepath"),
+    inputs=gr.Audio(sources="upload", type="filepath"),  # 修复:Gradio 4+ 参数 source→sources
     outputs=gr.Audio(label="Generated Speech", type="numpy"),
 )
 
@@ -254,17 +254,19 @@ Audio(audio, rate=16000, autoplay=True)
 
 
 
-from transformers import HfAgent
-
-agent = HfAgent(
-    url_endpoint="https://api-inference.huggingface.co/models/bigcode/starcoder"
-)
-
-agent.run("Generate an image of a cat")
-
-launch_fn()
-transcription = transcribe()
-agent.run(transcription)
+# 修复:transformers v5 已移除 HfAgent(旧 Transformers Agents API),以下整段不再可运行,注释保留供参考。
+#      现在等价能力改用 huggingface_hub 的 Agent / InferenceClient,或 smolagents。
+# from transformers import HfAgent
+#
+# agent = HfAgent(
+#     url_endpoint="https://api-inference.huggingface.co/models/bigcode/starcoder"
+# )
+#
+# agent.run("Generate an image of a cat")
+#
+# launch_fn()
+# transcription = transcribe()
+# agent.run(transcription)
 
 #会议记录
 

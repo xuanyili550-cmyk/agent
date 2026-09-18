@@ -937,27 +937,27 @@ class VisionTransformer(nn.Module):
         else:
             self.apply(self._init_weights_trunc_normal)
 
-        def forward(self, x):
-            x = self.patch_embed(x)
-            B, C, H, W = x.size()
+    def forward(self, x):                            # 修复:原缩进 8 格误落在 __init__ 内成局部函数,提回 4 格作类方法
+        x = self.patch_embed(x)
+        B, C, H, W = x.size()
 
-            x = rearrange(x, "b c h w -> b (h w) c")
+        x = rearrange(x, "b c h w -> b (h w) c")
 
-            cls_tokens = None
-            if self.cls_token is not None:
-                cls_tokens = self.cls_token.expand(B, -1, -1)
-                x = torch.cat((cls_tokens, x), dim=1)
+        cls_tokens = None
+        if self.cls_token is not None:
+            cls_tokens = self.cls_token.expand(B, -1, -1)
+            x = torch.cat((cls_tokens, x), dim=1)
 
-            x = self.pos_drop(x)
+        x = self.pos_drop(x)
 
-            for i, blk in enumerate(self.blocks):
-                x = blk(x, H, W)
+        for i, blk in enumerate(self.blocks):
+            x = blk(x, H, W)
 
-            if self.cls_token is not None:
-                cls_tokens, x = torch.split(x, [1, H * W], 1)
-            x = rearrange(x, "b (h w) c -> b c h w", h=H, w=W)
+        if self.cls_token is not None:
+            cls_tokens, x = torch.split(x, [1, H * W], 1)
+        x = rearrange(x, "b (h w) c -> b c h w", h=H, w=W)
 
-            return x, cls_tokens
+        return x, cls_tokens
 
 
 class ConvolutionalVisionTransformer(nn.Module):

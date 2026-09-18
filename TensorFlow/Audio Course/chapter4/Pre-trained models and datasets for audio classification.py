@@ -130,7 +130,7 @@ def classify_audio(filepath):
 import gradio as gr
 
 demo = gr.Interface(
-    fn=classify_audio, inputs=gr.Audio(type="filepath"), outputs=gr.outputs.Label()
+    fn=classify_audio, inputs=gr.Audio(type="filepath"), outputs=gr.Label()  # 修复:gr.outputs 在 Gradio 4+ 已删,直接用 gr.Label
 )
 demo.launch(debug=True)
 

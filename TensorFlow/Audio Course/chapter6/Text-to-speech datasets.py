@@ -418,7 +418,7 @@ trainer = Seq2SeqTrainer(
     train_dataset=dataset["train"],
     eval_dataset=dataset["test"],
     data_collator=data_collator,
-    tokenizer=processor,
+    processing_class=processor,  # 修复:transformers v5 用 processing_class 取代了 tokenizer 参数
 )
 
 trainer.train()
