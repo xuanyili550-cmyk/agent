@@ -99,7 +99,7 @@ with MCPClient(
 import gradio as gr
 import os
 
-from mcp import StdioServerParameters
+from fastmcp import StdioServerParameters
 from smolagents import InferenceClientModel, CodeAgent, ToolCollection, MCPClient
 
 # 这是我们在上一节中创建的 MCP 客户端

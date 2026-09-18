@@ -32,8 +32,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
 
-# Gym
-import gym
+# Gym（gym 已弃用→改用维护中的 gymnasium，API 兼容；gym_pygame 不在 PyPI，需课程作者仓库）
+import gymnasium as gym
 import gym_pygame
 
 # Hugging Face Hub

@@ -317,7 +317,7 @@ import random
 import time
 from distutils.util import strtobool
 
-import gym
+import gymnasium as gym   # gym 已弃用→gymnasium，API 同名(make/wrappers/vector/spaces)
 import numpy as np
 import torch
 import torch.nn as nn

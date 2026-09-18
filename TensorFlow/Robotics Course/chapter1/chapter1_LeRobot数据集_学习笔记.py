@@ -27,7 +27,7 @@ def get_window(episode, idx, deltas, fps=10):
 
 
 def load_real():   # 🟡 需 pip install lerobot,默认不调用
-    from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
     return LeRobotDataset("lerobot/svla_so101_pickplace",
                           delta_timestamps={"observation.images.up": [-0.2, -0.1, 0.0], "action": [0.0]})
 
